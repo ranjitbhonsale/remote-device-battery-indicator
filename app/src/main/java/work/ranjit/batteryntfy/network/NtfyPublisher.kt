@@ -41,8 +41,9 @@ class NtfyPublisher {
                 readTimeout = 15000
                 instanceFollowRedirects = true
 
-                // Headers for ntfy.sh and HTTP webhooks
+                // Dual compatibility: Send JSON Content-Type and HTTP Headers for ntfy & PingMe
                 setRequestProperty("User-Agent", "BatteryNtfy/1.0 (Android)")
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Title", title)
                 setRequestProperty("Priority", priority.toString())
                 if (tags.isNotEmpty()) {
@@ -56,30 +57,19 @@ class NtfyPublisher {
                     }
                     setRequestProperty("Authorization", auth)
                 }
-
-                // If target URL or server is JSON API / PingMe / Webhook, JSON format works seamlessly
-                if (targetUrl.endsWith("/json") || targetUrl.contains("ping") || targetUrl.contains("webhook")) {
-                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                } else {
-                    setRequestProperty("Content-Type", "text/plain; charset=utf-8")
-                }
             }
 
-            // Create JSON or Plain payload body
-            val payloadText = if (targetUrl.endsWith("/json") || targetUrl.contains("ping") || targetUrl.contains("webhook")) {
-                JSONObject().apply {
-                    put("topic", config.topic)
-                    put("title", title)
-                    put("message", message)
-                    put("priority", priority)
-                    put("tags", JSONArray(tags))
-                }.toString()
-            } else {
-                message
-            }
+            // Create universal JSON payload body containing topic, title, message, priority, tags
+            val payloadJson = JSONObject().apply {
+                put("topic", config.topic.trim())
+                put("title", title)
+                put("message", message)
+                put("priority", priority)
+                put("tags", JSONArray(tags))
+            }.toString()
 
             OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use { writer ->
-                writer.write(payloadText)
+                writer.write(payloadJson)
                 writer.flush()
             }
 
