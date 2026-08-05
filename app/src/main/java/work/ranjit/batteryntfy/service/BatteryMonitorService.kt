@@ -208,22 +208,36 @@ class BatteryMonitorService : Service() {
         tags: List<String>
     ) {
         serviceScope.launch {
-            val config = prefsRepo.getConfig()
-
-            // Check if user enabled "Only send alerts when battery is below threshold"
-            if (config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
-                // Skip sending alert because battery level is above the pre-selected threshold
-                return@launch
+            val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            val wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "BatteryNtfy:NetworkWakeLock")
+            try {
+                wakeLock?.acquire(10000L)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
 
-            val log = ntfyPublisher.publishNotification(
-                config = config,
-                eventType = eventType,
-                batteryInfo = batteryInfo,
-                priorityOverride = priority,
-                tags = tags
-            )
-            prefsRepo.addLog(log)
+            try {
+                val config = prefsRepo.getConfig()
+
+                // Check if user enabled "Only send alerts when battery is below threshold"
+                if (config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
+                    // Skip sending alert because battery level is above the pre-selected threshold
+                    return@launch
+                }
+
+                val log = ntfyPublisher.publishNotification(
+                    config = config,
+                    eventType = eventType,
+                    batteryInfo = batteryInfo,
+                    priorityOverride = priority,
+                    tags = tags
+                )
+                prefsRepo.addLog(log)
+            } finally {
+                if (wakeLock?.isHeld == true) {
+                    try { wakeLock.release() } catch (e: Exception) {}
+                }
+            }
         }
     }
 

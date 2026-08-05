@@ -3,8 +3,9 @@ package work.ranjit.batteryntfy.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -112,31 +113,74 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // Full target URL display banner
+                // Full target URL display & Share Button
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column {
-                            Text(
-                                text = "Full Destination URL:",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = config.getFullTopicUrl(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Full Destination URL:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = config.getFullTopicUrl(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "BatteryNtfy Topic")
+                                        putExtra(Intent.EXTRA_TEXT, "Subscribe to my phone battery updates on ntfy: ${config.getFullTopicUrl()}")
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share ntfy Topic Link"))
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Share to Mobile 2")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(config.getFullTopicUrl()))
+                                        context.startActivity(browserIntent)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open in Web")
+                            }
                         }
                     }
                 }
@@ -254,7 +298,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
             }
         }
 
-        // How to Subscribe Guide Card
+        // Multi-Device Setup & Troubleshooting Guide
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -262,16 +306,18 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text("How to view notifications on another phone:", fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Why 2nd Mobile Might Not Receive Alerts:", fontWeight = FontWeight.Bold)
                 }
+
                 Text(
-                    text = "1. Install the official 'ntfy' app from Google Play Store or App Store on your target mobile.\n" +
-                            "2. Open ntfy app, tap '+' to subscribe to topic:\n   ${config.topic}\n" +
-                            "3. You will now receive instant push alerts whenever this phone's battery state changes!",
+                    text = "1. Exact Topic Match: Ensure the 2nd phone is subscribed to exact topic '${config.topic}' (case-sensitive).\n\n" +
+                            "2. Second Mobile Battery Optimization: On Samsung/Xiaomi/Oppo, open App Info for 'ntfy' on the 2nd phone → set Battery to 'Unrestricted' and turn ON 'Auto-Start'.\n\n" +
+                            "3. Notification Permission: Ensure Notification permission is granted for the 'ntfy' app on the 2nd phone.\n\n" +
+                            "4. Custom Server HTTP: If using a custom server over http://, cleartext traffic is enabled in this app. Ensure the 2nd phone can access the server IP/URL.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

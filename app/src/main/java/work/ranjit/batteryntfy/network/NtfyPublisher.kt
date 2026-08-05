@@ -35,10 +35,12 @@ class NtfyPublisher {
             val connection = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
-                connectTimeout = 10000
-                readTimeout = 10000
+                connectTimeout = 15000
+                readTimeout = 15000
+                instanceFollowRedirects = true
 
-                // Set ntfy headers
+                // Standard & ntfy headers
+                setRequestProperty("User-Agent", "BatteryNtfy/1.0 (Android)")
                 setRequestProperty("Title", title)
                 setRequestProperty("Priority", priority.toString())
                 if (tags.isNotEmpty()) {
@@ -71,7 +73,13 @@ class NtfyPublisher {
             e.printStackTrace()
             isSuccess = false
             responseCode = 0
-            errorMessage = e.localizedMessage ?: e.message ?: "Network error"
+            val rawErr = e.localizedMessage ?: e.message ?: e.javaClass.simpleName
+            errorMessage = when {
+                rawErr.contains("Cleartext", ignoreCase = true) -> "Cleartext HTTP denied by network security policy"
+                rawErr.contains("Unable to resolve host", ignoreCase = true) -> "No Internet / Host unreachable"
+                rawErr.contains("timeout", ignoreCase = true) -> "Connection Timed Out"
+                else -> rawErr
+            }
         }
 
         return@withContext NotificationLog(
