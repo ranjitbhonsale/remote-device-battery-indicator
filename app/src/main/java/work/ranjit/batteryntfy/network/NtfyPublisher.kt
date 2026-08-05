@@ -23,7 +23,11 @@ class NtfyPublisher {
         priorityOverride: Int? = null,
         tags: List<String> = listOf("battery")
     ): NotificationLog = withContext(Dispatchers.IO) {
-        val targetUrl = config.getFullTopicUrl()
+        // ntfy.sh root API URL for JSON publishing (https://ntfy.sh)
+        val serverBase = config.serverUrl.trim().removeSuffix("/")
+        val topicClean = config.topic.trim()
+        val targetUrl = if (serverBase.isNotBlank()) serverBase else "https://ntfy.sh"
+
         val title = customTitle ?: buildTitle(eventType, batteryInfo)
         val message = customMessage ?: buildMessage(eventType, batteryInfo)
         val priority = priorityOverride ?: config.defaultPriority
@@ -59,9 +63,9 @@ class NtfyPublisher {
                 }
             }
 
-            // Create universal JSON payload body containing topic, title, message, priority, tags
+            // Create JSON payload body containing topic, title, message, priority, tags
             val payloadJson = JSONObject().apply {
-                put("topic", config.topic.trim())
+                put("topic", topicClean)
                 put("title", title)
                 put("message", message)
                 put("priority", priority)
