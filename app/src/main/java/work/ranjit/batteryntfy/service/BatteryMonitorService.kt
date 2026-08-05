@@ -220,8 +220,19 @@ class BatteryMonitorService : Service() {
                 val config = prefsRepo.getConfig()
 
                 // Check if user enabled "Only send alerts when battery is below threshold"
-                if (config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
-                    // Skip sending alert because battery level is above the pre-selected threshold
+                // Exempt Low Battery, Full Battery, and Manual Test alerts from filter
+                val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Manual") || eventType.contains("Test")
+                if (!isCriticalOrManual && config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
+                    val skippedLog = work.ranjit.batteryntfy.data.NotificationLog(
+                        eventType = "$eventType (Filtered)",
+                        batteryPercent = batteryInfo.levelPercent,
+                        title = "Alert Filtered",
+                        message = "Skipped remote notification because battery level (${batteryInfo.levelPercent}%) is above filter threshold (${config.onlySendBelowLevelThreshold}%).",
+                        isSuccess = false,
+                        responseCode = 0,
+                        errorMessage = "Filter Active: Level (${batteryInfo.levelPercent}%) > Threshold (${config.onlySendBelowLevelThreshold}%)"
+                    )
+                    prefsRepo.addLog(skippedLog)
                     return@launch
                 }
 

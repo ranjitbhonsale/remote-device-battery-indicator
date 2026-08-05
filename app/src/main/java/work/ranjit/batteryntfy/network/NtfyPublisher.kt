@@ -5,6 +5,8 @@ import work.ranjit.batteryntfy.data.NotificationLog
 import work.ranjit.batteryntfy.data.NtfyConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -39,7 +41,7 @@ class NtfyPublisher {
                 readTimeout = 15000
                 instanceFollowRedirects = true
 
-                // Standard & ntfy headers
+                // Headers for ntfy.sh and HTTP webhooks
                 setRequestProperty("User-Agent", "BatteryNtfy/1.0 (Android)")
                 setRequestProperty("Title", title)
                 setRequestProperty("Priority", priority.toString())
@@ -55,18 +57,38 @@ class NtfyPublisher {
                     setRequestProperty("Authorization", auth)
                 }
 
-                setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+                // If target URL or server is JSON API / PingMe / Webhook, JSON format works seamlessly
+                if (targetUrl.endsWith("/json") || targetUrl.contains("ping") || targetUrl.contains("webhook")) {
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                } else {
+                    setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+                }
+            }
+
+            // Create JSON or Plain payload body
+            val payloadText = if (targetUrl.endsWith("/json") || targetUrl.contains("ping") || targetUrl.contains("webhook")) {
+                JSONObject().apply {
+                    put("topic", config.topic)
+                    put("title", title)
+                    put("message", message)
+                    put("priority", priority)
+                    put("tags", JSONArray(tags))
+                }.toString()
+            } else {
+                message
             }
 
             OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use { writer ->
-                writer.write(message)
+                writer.write(payloadText)
                 writer.flush()
             }
 
             responseCode = connection.responseCode
             isSuccess = responseCode in 200..299
             if (!isSuccess) {
-                errorMessage = "HTTP Error $responseCode: ${connection.responseMessage ?: "Unknown Error"}"
+                val errorStream = connection.errorStream
+                val errText = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                errorMessage = "HTTP Error $responseCode: ${connection.responseMessage ?: "Unknown"}${if (errText.isNotBlank()) " ($errText)" else ""}"
             }
             connection.disconnect()
         } catch (e: Exception) {
