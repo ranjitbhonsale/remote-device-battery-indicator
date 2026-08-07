@@ -28,8 +28,17 @@ class NtfyPublisher {
         val priority = priorityOverride ?: config.defaultPriority
         val format = config.payloadFormat
 
-        // Determine destination target URL & payload format
-        val targetUrl = config.getFullTopicUrl()
+        // Handle topic formatting (PingMe app adds 'work_ranjit_' namespace prefix)
+        val rawTopic = config.topic.trim()
+        val topicClean = if (format == "pingme_json" && !rawTopic.startsWith("work_ranjit_")) {
+            "work_ranjit_$rawTopic"
+        } else {
+            rawTopic
+        }
+
+        // Determine destination target URL
+        val cleanServer = config.serverUrl.trim().removeSuffix("/")
+        val targetUrl = "$cleanServer/$topicClean"
 
         var responseCode = -1
         var isSuccess = false
@@ -74,7 +83,7 @@ class NtfyPublisher {
             val payloadText = when (format) {
                 "pingme_json" -> {
                     JSONObject().apply {
-                        put("topic", config.topic.trim())
+                        put("topic", topicClean)
                         put("title", title)
                         put("message", message)
                         put("text", "$title\n\n$message")
