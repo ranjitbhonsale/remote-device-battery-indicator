@@ -24,11 +24,11 @@ class NtfyPublisher {
         tags: List<String> = listOf("battery")
     ): NotificationLog = withContext(Dispatchers.IO) {
         val title = customTitle ?: buildTitle(eventType, batteryInfo)
-        val message = customMessage ?: buildMessage(eventType, batteryInfo)
+        val detailsMessage = customMessage ?: buildMessage(eventType, batteryInfo)
         val priority = priorityOverride ?: config.defaultPriority
         val format = config.payloadFormat
 
-        // Handle topic formatting (PingMe app adds 'work_ranjit_' namespace prefix)
+        // Handle topic formatting (PingMe app uses 'work_ranjit_' namespace prefix)
         val rawTopic = config.topic.trim()
         val topicClean = if (format == "pingme_json" && !rawTopic.startsWith("work_ranjit_")) {
             "work_ranjit_$rawTopic"
@@ -82,22 +82,23 @@ class NtfyPublisher {
             // Construct payload content based on chosen format
             val payloadText = when (format) {
                 "pingme_json" -> {
+                    // PingMe UI filters by message matching target ID (rawTopic)
                     JSONObject().apply {
                         put("topic", topicClean)
                         put("title", title)
-                        put("message", message)
-                        put("text", "$title\n\n$message")
-                        put("body", message)
+                        put("message", rawTopic) // Matches PingMe senderOrReceiver filter!
+                        put("text", "$title\n\n$detailsMessage")
+                        put("body", detailsMessage)
                         put("priority", priority)
                         put("tags", JSONArray(tags))
                     }.toString()
                 }
                 "raw_text" -> {
-                    "$title\n\n$message"
+                    "$title\n\n$detailsMessage"
                 }
                 else -> {
                     // Standard ntfy Direct Mobile Format (headers + plain text body)
-                    message
+                    detailsMessage
                 }
             }
 
@@ -131,7 +132,7 @@ class NtfyPublisher {
             eventType = eventType,
             batteryPercent = batteryInfo.levelPercent,
             title = title,
-            message = message,
+            message = detailsMessage,
             isSuccess = isSuccess,
             responseCode = responseCode,
             errorMessage = errorMessage
