@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +17,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -187,6 +190,62 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
             }
         }
 
+        // Payload Format Selector Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text(
+                        text = "Mobile Receiver Payload Format",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Text(
+                    text = "Select how alerts are structured for your receiving mobile app:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                listOf(
+                    "standard" to "Standard ntfy (Mobile Push - Headers + Text)",
+                    "pingme_json" to "PingMe / Webhook JSON Payload",
+                    "raw_text" to "Raw Plain Text Body"
+                ).forEach { (fmtKey, fmtLabel) ->
+                    val isSelected = config.payloadFormat == fmtKey
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { viewModel.updateConfig(config.copy(payloadFormat = fmtKey)) }
+                        )
+                        Text(
+                            text = fmtLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+
         // Priority & Auth Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -314,10 +373,10 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                 }
 
                 Text(
-                    text = "1. Exact Topic Match: Ensure the 2nd phone is subscribed to exact topic '${config.topic}' (case-sensitive).\n\n" +
-                            "2. Second Mobile Battery Optimization: On Samsung/Xiaomi/Oppo, open App Info for 'ntfy' on the 2nd phone → set Battery to 'Unrestricted' and turn ON 'Auto-Start'.\n\n" +
-                            "3. Notification Permission: Ensure Notification permission is granted for the 'ntfy' app on the 2nd phone.\n\n" +
-                            "4. Custom Server HTTP: If using a custom server over http://, cleartext traffic is enabled in this app. Ensure the 2nd phone can access the server IP/URL.",
+                    text = "1. Select Mobile Payload Format: Use 'Standard ntfy (Mobile Push)' for ntfy mobile apps, or 'PingMe / Webhook JSON' for PingMe.\n\n" +
+                            "2. Exact Topic Match: Ensure the receiving mobile is subscribed to topic '${config.topic}' (case-sensitive).\n\n" +
+                            "3. Second Mobile Battery Optimization: On Samsung/Xiaomi/Oppo, set Battery to 'Unrestricted' and turn ON 'Auto-Start' for the receiver app.\n\n" +
+                            "4. Notification Permission: Ensure Notification permission is granted on the receiving mobile.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

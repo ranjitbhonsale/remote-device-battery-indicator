@@ -15,7 +15,8 @@ data class NtfyConfig(
     val periodicIntervalMinutes: Int = 30, // 0 = disabled, 15, 30, 60, 120, etc.
     val autoStartOnBoot: Boolean = true,
     val onlySendWhenBelowLevelEnabled: Boolean = false,
-    val onlySendBelowLevelThreshold: Int = 20
+    val onlySendBelowLevelThreshold: Int = 20,
+    val payloadFormat: String = "standard" // "standard" (ntfy Headers + Text), "pingme_json" (PingMe/Webhook JSON), "raw_text" (Body Text)
 ) {
     fun getFullTopicUrl(): String {
         val cleanServer = serverUrl.trim().removeSuffix("/")

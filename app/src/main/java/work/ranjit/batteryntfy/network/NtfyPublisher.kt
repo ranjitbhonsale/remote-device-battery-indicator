@@ -23,14 +23,13 @@ class NtfyPublisher {
         priorityOverride: Int? = null,
         tags: List<String> = listOf("battery")
     ): NotificationLog = withContext(Dispatchers.IO) {
-        // ntfy.sh root API URL for JSON publishing (https://ntfy.sh)
-        val serverBase = config.serverUrl.trim().removeSuffix("/")
-        val topicClean = config.topic.trim()
-        val targetUrl = if (serverBase.isNotBlank()) serverBase else "https://ntfy.sh"
-
         val title = customTitle ?: buildTitle(eventType, batteryInfo)
         val message = customMessage ?: buildMessage(eventType, batteryInfo)
         val priority = priorityOverride ?: config.defaultPriority
+        val format = config.payloadFormat
+
+        // Determine destination target URL & payload format
+        val targetUrl = config.getFullTopicUrl()
 
         var responseCode = -1
         var isSuccess = false
@@ -45,9 +44,8 @@ class NtfyPublisher {
                 readTimeout = 15000
                 instanceFollowRedirects = true
 
-                // Dual compatibility: Send JSON Content-Type and HTTP Headers for ntfy & PingMe
+                // Always send standard User-Agent & ntfy HTTP headers for backward compatibility
                 setRequestProperty("User-Agent", "BatteryNtfy/1.0 (Android)")
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Title", title)
                 setRequestProperty("Priority", priority.toString())
                 if (tags.isNotEmpty()) {
@@ -61,19 +59,41 @@ class NtfyPublisher {
                     }
                     setRequestProperty("Authorization", auth)
                 }
+
+                when (format) {
+                    "pingme_json" -> {
+                        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    }
+                    else -> {
+                        setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+                    }
+                }
             }
 
-            // Create JSON payload body containing topic, title, message, priority, tags
-            val payloadJson = JSONObject().apply {
-                put("topic", topicClean)
-                put("title", title)
-                put("message", message)
-                put("priority", priority)
-                put("tags", JSONArray(tags))
-            }.toString()
+            // Construct payload content based on chosen format
+            val payloadText = when (format) {
+                "pingme_json" -> {
+                    JSONObject().apply {
+                        put("topic", config.topic.trim())
+                        put("title", title)
+                        put("message", message)
+                        put("text", "$title\n\n$message")
+                        put("body", message)
+                        put("priority", priority)
+                        put("tags", JSONArray(tags))
+                    }.toString()
+                }
+                "raw_text" -> {
+                    "$title\n\n$message"
+                }
+                else -> {
+                    // Standard ntfy Direct Mobile Format (headers + plain text body)
+                    message
+                }
+            }
 
             OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use { writer ->
-                writer.write(payloadJson)
+                writer.write(payloadText)
                 writer.flush()
             }
 

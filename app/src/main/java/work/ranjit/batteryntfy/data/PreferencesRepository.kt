@@ -23,6 +23,7 @@ class PreferencesRepository(context: Context) {
             putBoolean(KEY_AUTO_START_BOOT, config.autoStartOnBoot)
             putBoolean(KEY_ONLY_BELOW_LEVEL_ENABLED, config.onlySendWhenBelowLevelEnabled)
             putInt(KEY_ONLY_BELOW_LEVEL_THRESHOLD, config.onlySendBelowLevelThreshold)
+            putString(KEY_PAYLOAD_FORMAT, config.payloadFormat)
             apply()
         }
     }
@@ -42,7 +43,8 @@ class PreferencesRepository(context: Context) {
             periodicIntervalMinutes = prefs.getInt(KEY_PERIODIC_INTERVAL, defaultConfig.periodicIntervalMinutes),
             autoStartOnBoot = prefs.getBoolean(KEY_AUTO_START_BOOT, defaultConfig.autoStartOnBoot),
             onlySendWhenBelowLevelEnabled = prefs.getBoolean(KEY_ONLY_BELOW_LEVEL_ENABLED, defaultConfig.onlySendWhenBelowLevelEnabled),
-            onlySendBelowLevelThreshold = prefs.getInt(KEY_ONLY_BELOW_LEVEL_THRESHOLD, defaultConfig.onlySendBelowLevelThreshold)
+            onlySendBelowLevelThreshold = prefs.getInt(KEY_ONLY_BELOW_LEVEL_THRESHOLD, defaultConfig.onlySendBelowLevelThreshold),
+            payloadFormat = prefs.getString(KEY_PAYLOAD_FORMAT, defaultConfig.payloadFormat) ?: defaultConfig.payloadFormat
         )
     }
 
@@ -125,6 +127,7 @@ class PreferencesRepository(context: Context) {
         private const val KEY_AUTO_START_BOOT = "auto_start_boot"
         private const val KEY_ONLY_BELOW_LEVEL_ENABLED = "only_below_level_enabled"
         private const val KEY_ONLY_BELOW_LEVEL_THRESHOLD = "only_below_level_threshold"
+        private const val KEY_PAYLOAD_FORMAT = "payload_format"
         private const val KEY_LOGS_JSON = "logs_json"
         private const val KEY_SERVICE_ENABLED = "service_enabled"
     }
