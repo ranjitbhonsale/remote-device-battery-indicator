@@ -10,6 +10,7 @@ class PreferencesRepository(context: Context) {
 
     fun saveConfig(config: NtfyConfig) {
         prefs.edit().apply {
+            putString(KEY_DEVICE_NAME, config.deviceName)
             putString(KEY_SERVER_URL, config.serverUrl)
             putString(KEY_TOPIC, config.topic)
             putString(KEY_AUTH_TOKEN, config.authToken)
@@ -31,6 +32,7 @@ class PreferencesRepository(context: Context) {
     fun getConfig(): NtfyConfig {
         val defaultConfig = NtfyConfig()
         return NtfyConfig(
+            deviceName = prefs.getString(KEY_DEVICE_NAME, defaultConfig.deviceName) ?: defaultConfig.deviceName,
             serverUrl = prefs.getString(KEY_SERVER_URL, defaultConfig.serverUrl) ?: defaultConfig.serverUrl,
             topic = prefs.getString(KEY_TOPIC, defaultConfig.topic) ?: defaultConfig.topic,
             authToken = prefs.getString(KEY_AUTH_TOKEN, defaultConfig.authToken) ?: defaultConfig.authToken,
@@ -114,6 +116,7 @@ class PreferencesRepository(context: Context) {
     }
 
     companion object {
+        private const val KEY_DEVICE_NAME = "device_name"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_TOPIC = "topic"
         private const val KEY_AUTH_TOKEN = "auth_token"

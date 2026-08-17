@@ -36,6 +36,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
     val testResult by viewModel.testResult.collectAsState()
     val context = LocalContext.current
 
+    var deviceName by remember(config.deviceName) { mutableStateOf(config.deviceName) }
     var serverUrl by remember(config.serverUrl) { mutableStateOf(config.serverUrl) }
     var topic by remember(config.topic) { mutableStateOf(config.topic) }
     var authToken by remember(config.authToken) { mutableStateOf(config.authToken) }
@@ -55,6 +56,42 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
+
+        // Device Nickname Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Source Device Identification",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Specify a nickname so receiving devices know which phone or tablet sent the battery low alert.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = deviceName,
+                    onValueChange = {
+                        deviceName = it
+                        viewModel.updateConfig(config.copy(deviceName = it))
+                    },
+                    label = { Text("Device Nickname") },
+                    placeholder = { Text("e.g. Work Tablet, Bedroom Phone") },
+                    leadingIcon = { Icon(Icons.Default.Devices, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
 
         // Server & Topic Card
         Card(

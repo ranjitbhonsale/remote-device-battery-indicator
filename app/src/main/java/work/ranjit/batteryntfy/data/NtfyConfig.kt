@@ -1,8 +1,10 @@
 package work.ranjit.batteryntfy.data
 
+import android.os.Build
 import java.util.UUID
 
 data class NtfyConfig(
+    val deviceName: String = Build.MODEL ?: "My Android Device",
     val serverUrl: String = "https://ntfy.sh",
     val topic: String = "battery-mon-" + UUID.randomUUID().toString().take(6),
     val authToken: String = "", // Optional Bearer token or Basic auth

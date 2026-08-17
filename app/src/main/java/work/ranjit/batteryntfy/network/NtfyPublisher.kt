@@ -23,10 +23,18 @@ class NtfyPublisher {
         priorityOverride: Int? = null,
         tags: List<String> = listOf("battery")
     ): NotificationLog = withContext(Dispatchers.IO) {
-        val title = customTitle ?: buildTitle(eventType, batteryInfo)
-        val detailsMessage = customMessage ?: buildMessage(eventType, batteryInfo)
+        val title = customTitle ?: buildTitle(eventType, batteryInfo, config)
+        val detailsMessage = customMessage ?: buildMessage(eventType, batteryInfo, config)
         val priority = priorityOverride ?: config.defaultPriority
         val format = config.payloadFormat
+
+        // Include device tag in tags list
+        val deviceTagSanitized = config.deviceName.trim().lowercase().replace(Regex("[^a-z0-9_]"), "_")
+        val allTags = if (deviceTagSanitized.isNotBlank() && !tags.contains(deviceTagSanitized)) {
+            tags + deviceTagSanitized
+        } else {
+            tags
+        }
 
         // Handle topic formatting (PingMe app uses 'work_ranjit_' namespace prefix)
         val rawTopic = config.topic.trim()
@@ -57,8 +65,8 @@ class NtfyPublisher {
                 setRequestProperty("User-Agent", "BatteryNtfy/1.0 (Android)")
                 setRequestProperty("Title", title)
                 setRequestProperty("Priority", priority.toString())
-                if (tags.isNotEmpty()) {
-                    setRequestProperty("Tags", tags.joinToString(","))
+                if (allTags.isNotEmpty()) {
+                    setRequestProperty("Tags", allTags.joinToString(","))
                 }
                 if (config.authToken.isNotBlank()) {
                     val auth = if (config.authToken.startsWith("Bearer ") || config.authToken.startsWith("Basic ")) {
@@ -85,12 +93,14 @@ class NtfyPublisher {
                     // PingMe UI filters by message matching target ID (rawTopic)
                     JSONObject().apply {
                         put("topic", topicClean)
+                        put("device", config.deviceName)
+                        put("deviceName", config.deviceName)
                         put("title", title)
                         put("message", rawTopic) // Matches PingMe senderOrReceiver filter!
                         put("text", "$title\n\n$detailsMessage")
                         put("body", detailsMessage)
                         put("priority", priority)
-                        put("tags", JSONArray(tags))
+                        put("tags", JSONArray(allTags))
                     }.toString()
                 }
                 "raw_text" -> {
@@ -139,20 +149,22 @@ class NtfyPublisher {
         )
     }
 
-    private fun buildTitle(eventType: String, batteryInfo: BatteryInfo): String {
+    private fun buildTitle(eventType: String, batteryInfo: BatteryInfo, config: NtfyConfig): String {
         val icon = when {
             batteryInfo.isCharging -> "🔌"
             batteryInfo.levelPercent <= 15 -> "🪫"
             batteryInfo.levelPercent >= 90 -> "🔋"
             else -> "📱"
         }
-        return "$icon Device Battery: ${batteryInfo.levelPercent}% ($eventType)"
+        val deviceTag = if (config.deviceName.isNotBlank()) "[${config.deviceName}] " else ""
+        return "$icon ${deviceTag}Battery: ${batteryInfo.levelPercent}% ($eventType)"
     }
 
-    private fun buildMessage(eventType: String, batteryInfo: BatteryInfo): String {
+    private fun buildMessage(eventType: String, batteryInfo: BatteryInfo, config: NtfyConfig): String {
         val state = if (batteryInfo.isCharging) "Charging via ${batteryInfo.pluggedType}" else "Discharging"
+        val deviceLine = if (config.deviceName.isNotBlank()) "Source Device: ${config.deviceName}\n" else ""
         return """
-            Status: $state
+            ${deviceLine}Status: $state
             Level: ${batteryInfo.levelPercent}%
             Health: ${batteryInfo.health}
             Temp: ${batteryInfo.temperatureCelsius}°C
