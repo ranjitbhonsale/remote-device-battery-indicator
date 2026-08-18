@@ -38,10 +38,52 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew bundleRelease --no-daemon
 
-      - name: Publish Android App Bundle to Google Play Store
-        uses: rstudio/play-store-publish@v1
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
         with:
-          service-account-json: ${{ secrets.SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON || secrets.GOOGLE_PLAY_KEY }}
-          package-name: work.ranjit.batteryntfy
-          aab-file-path: app/build/outputs/bundle/release/app-release.aab
-          track: production
+          python-version: '3.11'
+
+      - name: Install Google API Client
+        run: python -m pip install --upgrade google-api-python-client google-auth google-auth-httplib2
+
+      - name: Publish Android App Bundle to Google Play Store
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON || secrets.GOOGLE_PLAY_KEY }}
+        run: |
+          if [ -n "$SERVICE_ACCOUNT_JSON" ]; then
+            echo "$SERVICE_ACCOUNT_JSON" > service_account.json
+            python3 -c "
+          import os, sys
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          creds = service_account.Credentials.from_service_account_file(
+              'service_account.json',
+              scopes=['https://www.googleapis.com/auth/androidpublisher']
+          )
+          service = build('androidpublisher', 'v3', credentials=creds)
+          pkg = 'work.ranjit.batteryntfy'
+
+          edit = service.edits().insert(packageName=pkg, body={}).execute()
+          edit_id = edit['id']
+          print(f'Created Play Store edit ID: {edit_id}')
+
+          media = MediaFileUpload('app/build/outputs/bundle/release/app-release.aab', mimetype='application/octet-stream')
+          bundle = service.edits().bundles().upload(packageName=pkg, editId=edit_id, media_body=media).execute()
+          vcode = bundle['versionCode']
+          print(f'Uploaded AAB version code: {vcode}')
+
+          service.edits().tracks().update(
+              packageName=pkg,
+              editId=edit_id,
+              track='internal',
+              body={'track': 'internal', 'releases': [{'versionCodes': [str(vcode)], 'status': 'completed'}]}
+          ).execute()
+
+          service.edits().commit(packageName=pkg, editId=edit_id).execute()
+          print('Successfully committed release to Google Play Store Internal Track!')
+          "
+          else
+            echo "SERVICE_ACCOUNT_JSON secret not set. Local release bundle generated at app/build/outputs/bundle/release/app-release.aab."
+          fi
