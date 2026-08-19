@@ -23,20 +23,28 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
-      - name: Decode Release Keystore (if SIGNING_KEY secret is present)
+      - name: Decode Release Keystore from GitHub Secrets
         env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY || secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 || secrets.KEYSTORE_BASE64 || secrets.SIGNING_KEY }}
         run: |
-          if [ -n "$SIGNING_KEY" ]; then
-            echo "$SIGNING_KEY" | base64 -d > app/release.jks
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > app/release.jks
+            echo "Successfully decoded release keystore into app/release.jks"
+          else
+            echo "WARNING: Keystore secret not found."
           fi
 
       - name: Build Release Bundle (.aab)
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew bundleRelease --no-daemon
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.KEY_PASSWORD }}
+        run: |
+          if [ -f "app/release.jks" ]; then
+            ./gradlew bundleRelease -Pandroid.injected.signing.store.file="$(pwd)/app/release.jks" -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" -Pandroid.injected.signing.key.alias="$KEY_ALIAS" -Pandroid.injected.signing.key.password="$KEY_PASSWORD" --no-daemon
+          else
+            ./gradlew bundleRelease --no-daemon
+          fi
 
       - name: Set up Python 3
         uses: actions/setup-python@v5
@@ -48,10 +56,10 @@ jobs:
 
       - name: Publish Android App Bundle to Google Play Store
         env:
-          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON || secrets.GOOGLE_PLAY_KEY }}
+          PLAY_JSON: ${{ secrets.PLAY_STORE_JSON_KEY || secrets.SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON || secrets.GOOGLE_PLAY_KEY }}
         run: |
-          if [ -n "$SERVICE_ACCOUNT_JSON" ]; then
-            echo "$SERVICE_ACCOUNT_JSON" > service_account.json
+          if [ -n "$PLAY_JSON" ]; then
+            echo "$PLAY_JSON" > service_account.json
             python3 -c "
           import os, sys
           from google.oauth2 import service_account
@@ -85,5 +93,5 @@ jobs:
           print('Successfully committed release to Google Play Store Internal Track!')
           "
           else
-            echo "SERVICE_ACCOUNT_JSON secret not set. Local release bundle generated at app/build/outputs/bundle/release/app-release.aab."
+            echo "PLAY_STORE_JSON_KEY secret not set. Skipping API upload."
           fi
