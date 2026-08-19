@@ -46,10 +46,62 @@ jobs:
             ./gradlew bundleRelease --no-daemon
           fi
 
-      - name: Upload to Play Store (Internal Track)
-        uses: r2d2kk/upload-google-play@v1
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
         with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
-          packageName: work.ranjit.batteryntfy
-          releaseFiles: app/build/outputs/bundle/release/app-release.aab
-          track: internal
+          python-version: '3.11'
+
+      - name: Install Google API Client
+        run: python -m pip install --upgrade google-api-python-client google-auth google-auth-httplib2
+
+      - name: Publish Android App Bundle to Google Play Store
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_STORE_JSON_KEY || secrets.SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON || secrets.GOOGLE_PLAY_KEY }}
+        run: |
+          if [ -n "$PLAY_JSON" ]; then
+            echo "$PLAY_JSON" > service_account.json
+            python3 -c "
+          import os, sys, json
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          with open('service_account.json') as f:
+              sa_data = json.load(f)
+              sa_email = sa_data.get('client_email')
+              print('Service Account Email:', sa_email)
+
+          try:
+              creds = service_account.Credentials.from_service_account_file(
+                  'service_account.json',
+                  scopes=['https://www.googleapis.com/auth/androidpublisher']
+              )
+              service = build('androidpublisher', 'v3', credentials=creds)
+              pkg = 'work.ranjit.batteryntfy'
+
+              edit = service.edits().insert(packageName=pkg, body={}).execute()
+              edit_id = edit['id']
+              print(f'Created Play Store edit ID: {edit_id}')
+
+              media = MediaFileUpload('app/build/outputs/bundle/release/app-release.aab', mimetype='application/octet-stream')
+              bundle = service.edits().bundles().upload(packageName=pkg, editId=edit_id, media_body=media).execute()
+              vcode = bundle['versionCode']
+              print(f'Uploaded AAB version code: {vcode}')
+
+              service.edits().tracks().update(
+                  packageName=pkg,
+                  editId=edit_id,
+                  track='internal',
+                  body={'track': 'internal', 'releases': [{'versionCodes': [str(vcode)], 'status': 'completed'}]}
+              ).execute()
+
+              service.edits().commit(packageName=pkg, editId=edit_id).execute()
+              print('SUCCESS! Released versionCode 3 to Google Play Console Internal Track!')
+          except Exception as e:
+              print('Google Play API Error:', e)
+              print(f'IMPORTANT: Make sure {sa_email} is invited as a User under Google Play Console -> Users & Permissions!')
+              sys.exit(1)
+          "
+          else
+            echo "PLAY_STORE_JSON_KEY secret not set."
+          fi
