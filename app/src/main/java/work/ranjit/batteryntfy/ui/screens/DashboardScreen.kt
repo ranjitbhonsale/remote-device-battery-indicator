@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import work.ranjit.batteryntfy.data.BatteryInfo
 import work.ranjit.batteryntfy.data.SubscribedDeviceState
 import work.ranjit.batteryntfy.ui.BatteryViewModel
+import work.ranjit.batteryntfy.ui.components.QrCodeDisplayDialog
+import work.ranjit.batteryntfy.ui.components.QrCodeScannerDialog
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,6 +49,8 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
     var showAddTopicDialog by remember { mutableStateOf(false) }
     var newTopicInput by remember { mutableStateOf("") }
+    var showQrScanner by remember { mutableStateOf(false) }
+    var showQrDisplayDialog by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
 
@@ -93,6 +97,12 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 }
 
                 IconButton(
+                    onClick = { showQrScanner = true }
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR Code", tint = MaterialTheme.colorScheme.primary)
+                }
+
+                IconButton(
                     onClick = { showAddTopicDialog = true }
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Add Remote Device", tint = MaterialTheme.colorScheme.primary)
@@ -127,19 +137,33 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Add a remote device ntfy topic (e.g. tablet or second phone) to receive and display its live battery state right here.",
+                        text = "Scan a device's QR code or add its ntfy topic (e.g. tablet or second phone) to view its live battery state.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(0.9f)
                     )
-                    Button(
-                        onClick = { showAddTopicDialog = true },
-                        shape = RoundedCornerShape(12.dp),
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Add Subscribed Remote Device")
+                        Button(
+                            onClick = { showQrScanner = true },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Scan QR Code")
+                        }
+
+                        OutlinedButton(
+                            onClick = { showAddTopicDialog = true },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Add Topic Manually")
+                        }
                     }
                 }
             }
@@ -157,11 +181,27 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
         // Section 2: Local Device Battery Telemetry (Sender Mode)
-        Text(
-            text = "This Device (${config.deviceName})",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "This Device (${config.deviceName})",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            OutlinedButton(
+                onClick = { showQrDisplayDialog = true },
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Show QR Code", fontSize = 12.sp)
+            }
+        }
 
         // Battery Arc Gauge Header Card
         BatteryGaugeCard(batteryInfo = batteryInfo)
@@ -463,6 +503,25 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    // QR Code Scanner Dialog
+    if (showQrScanner) {
+        QrCodeScannerDialog(
+            onDismiss = { showQrScanner = false },
+            onTopicScanned = { scannedTopic ->
+                viewModel.addSubscribedTopic(scannedTopic)
+            }
+        )
+    }
+
+    // QR Code Display Dialog
+    if (showQrDisplayDialog) {
+        QrCodeDisplayDialog(
+            deviceName = config.deviceName,
+            topicUrl = config.getFullTopicUrl(),
+            onDismiss = { showQrDisplayDialog = false }
         )
     }
 }

@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import work.ranjit.batteryntfy.data.NtfyConfig
 import work.ranjit.batteryntfy.ui.BatteryViewModel
+import work.ranjit.batteryntfy.ui.components.QrCodeDisplayDialog
+import work.ranjit.batteryntfy.ui.components.QrCodeScannerDialog
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +45,9 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
     var authToken by remember(config.authToken) { mutableStateOf(config.authToken) }
     var defaultPriority by remember(config.defaultPriority) { mutableIntStateOf(config.defaultPriority) }
     var newSubTopicInput by remember { mutableStateOf("") }
+
+    var showQrScanner by remember { mutableStateOf(false) }
+    var showQrDisplayDialog by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
 
@@ -82,12 +87,12 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                 }
 
                 Text(
-                    text = "Add ntfy topics of remote phones or tablets to receive their low battery alerts and show their battery states on your dashboard.",
+                    text = "Add or scan ntfy topics of remote phones or tablets to receive their low battery alerts and show their battery states on your dashboard.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Input + Add Button
+                // Input + Add Button + Scan QR Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -102,6 +107,13 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    IconButton(
+                        onClick = { showQrScanner = true },
+                        modifier = Modifier.height(56.dp)
+                    ) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR Code", tint = MaterialTheme.colorScheme.primary)
+                    }
 
                     Button(
                         onClick = {
@@ -289,7 +301,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // Full target URL display & Share Button
+                // Full target URL display & Share / QR Buttons
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(12.dp),
@@ -324,6 +336,16 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            Button(
+                                onClick = { showQrDisplayDialog = true },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Show QR Code")
+                            }
+
                             OutlinedButton(
                                 onClick = {
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -338,82 +360,9 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share Topic")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    try {
-                                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(config.getFullTopicUrl()))
-                                        context.startActivity(browserIntent)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Open in Web")
+                                Text("Share Link")
                             }
                         }
-                    }
-                }
-            }
-        }
-
-        // Payload Format Selector Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text(
-                        text = "Mobile Receiver Payload Format",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Text(
-                    text = "Select how alerts are structured for your receiving mobile app:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                listOf(
-                    "standard" to "Standard ntfy (Mobile Push - Headers + Text)",
-                    "pingme_json" to "PingMe / Webhook JSON Payload",
-                    "raw_text" to "Raw Plain Text Body"
-                ).forEach { (fmtKey, fmtLabel) ->
-                    val isSelected = config.payloadFormat == fmtKey
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent)
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = isSelected,
-                            onClick = { viewModel.updateConfig(config.copy(payloadFormat = fmtKey)) }
-                        )
-                        Text(
-                            text = fmtLabel,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
                     }
                 }
             }
@@ -529,5 +478,24 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                 }
             }
         }
+    }
+
+    // QR Code Scanner Dialog
+    if (showQrScanner) {
+        QrCodeScannerDialog(
+            onDismiss = { showQrScanner = false },
+            onTopicScanned = { scannedTopic ->
+                viewModel.addSubscribedTopic(scannedTopic)
+            }
+        )
+    }
+
+    // QR Code Display Dialog
+    if (showQrDisplayDialog) {
+        QrCodeDisplayDialog(
+            deviceName = config.deviceName,
+            topicUrl = config.getFullTopicUrl(),
+            onDismiss = { showQrDisplayDialog = false }
+        )
     }
 }

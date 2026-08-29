@@ -11,8 +11,8 @@ android {
         applicationId = "work.ranjit.batteryntfy"
         minSdk = 24
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
     }
 
     signingConfigs {
@@ -92,4 +92,13 @@ dependencies {
   implementation(libs.androidx.navigation3.ui)
   implementation(libs.androidx.navigation3.runtime)
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+
+  // ZXing for QR Code Generation
+  implementation("com.google.zxing:core:3.5.3")
+
+  // CameraX & ML Kit for QR Code Scanning
+  implementation("androidx.camera:camera-camera2:1.3.4")
+  implementation("androidx.camera:camera-lifecycle:1.3.4")
+  implementation("androidx.camera:camera-view:1.3.4")
+  implementation("com.google.mlkit:barcode-scanning:17.3.0")
 }
