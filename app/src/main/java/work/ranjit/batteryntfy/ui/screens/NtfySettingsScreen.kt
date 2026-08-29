@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -41,6 +42,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
     var topic by remember(config.topic) { mutableStateOf(config.topic) }
     var authToken by remember(config.authToken) { mutableStateOf(config.authToken) }
     var defaultPriority by remember(config.defaultPriority) { mutableIntStateOf(config.defaultPriority) }
+    var newSubTopicInput by remember { mutableStateOf("") }
 
     val scrollState = rememberScrollState()
 
@@ -57,7 +59,141 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
             fontWeight = FontWeight.Bold
         )
 
-        // Device Nickname Card
+        // Section 1: Subscribed Remote Devices (Receiver Mode Settings)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.CellTower, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text(
+                        text = "Subscribed Devices (Receiver Mode)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Text(
+                    text = "Add ntfy topics of remote phones or tablets to receive their low battery alerts and show their battery states on your dashboard.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Input + Add Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = newSubTopicInput,
+                        onValueChange = { newSubTopicInput = it },
+                        label = { Text("Remote ntfy Topic") },
+                        placeholder = { Text("e.g. ranjit1024, work_tablet") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            if (newSubTopicInput.isNotBlank()) {
+                                viewModel.addSubscribedTopic(newSubTopicInput)
+                                newSubTopicInput = ""
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(56.dp)
+                    ) {
+                        Text("Add")
+                    }
+                }
+
+                // Subscribed Topics List Chips
+                if (config.subscribedTopics.isNotEmpty()) {
+                    Text(
+                        text = "Active Subscriptions:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        config.subscribedTopics.forEach { subTopic ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Tag, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                        Text(
+                                            text = subTopic,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.removeSubscribedTopic(subTopic) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Receiver Notification Toggles
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Receive System Notifications",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Post local Android notifications when a remote device sends a low battery alert",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Switch(
+                        checked = config.receiveNotificationsEnabled,
+                        onCheckedChange = {
+                            viewModel.updateConfig(config.copy(receiveNotificationsEnabled = it))
+                        }
+                    )
+                }
+            }
+        }
+
+        // Section 2: Sender Mode & Device Nickname Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -68,7 +204,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Source Device Identification",
+                    text = "Source Device Identification (Sender Mode)",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -125,7 +261,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                         topic = it
                         viewModel.updateConfig(config.copy(topic = it))
                     },
-                    label = { Text("ntfy Topic Name") },
+                    label = { Text("ntfy Topic Name (This Device Publish Topic)") },
                     placeholder = { Text("my-battery-topic") },
                     leadingIcon = { Icon(Icons.Default.Tag, contentDescription = null) },
                     trailingIcon = {
@@ -170,7 +306,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                             Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Full Destination URL:",
+                                    text = "Full Destination Publish URL:",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -202,7 +338,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share to Mobile 2")
+                                Text("Share Topic")
                             }
 
                             OutlinedButton(
@@ -391,32 +527,6 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                         )
                     }
                 }
-            }
-        }
-
-        // Multi-Device Setup & Troubleshooting Guide
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text("Why 2nd Mobile Might Not Receive Alerts:", fontWeight = FontWeight.Bold)
-                }
-
-                Text(
-                    text = "1. Select Mobile Payload Format: Use 'Standard ntfy (Mobile Push)' for ntfy mobile apps, or 'PingMe / Webhook JSON' for PingMe.\n\n" +
-                            "2. Exact Topic Match: Ensure the receiving mobile is subscribed to topic '${config.topic}' (case-sensitive).\n\n" +
-                            "3. Second Mobile Battery Optimization: On Samsung/Xiaomi/Oppo, set Battery to 'Unrestricted' and turn ON 'Auto-Start' for the receiver app.\n\n" +
-                            "4. Notification Permission: Ensure Notification permission is granted on the receiving mobile.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }

@@ -17,8 +17,11 @@ import androidx.core.app.NotificationCompat
 import work.ranjit.batteryntfy.MainActivity
 import work.ranjit.batteryntfy.R
 import work.ranjit.batteryntfy.data.BatteryInfo
+import work.ranjit.batteryntfy.data.NtfyConfig
 import work.ranjit.batteryntfy.data.PreferencesRepository
+import work.ranjit.batteryntfy.data.SubscribedDeviceState
 import work.ranjit.batteryntfy.network.NtfyPublisher
+import work.ranjit.batteryntfy.network.NtfySubscriber
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,8 +37,10 @@ class BatteryMonitorService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     private val prefsRepo by lazy { PreferencesRepository(this) }
     private val ntfyPublisher = NtfyPublisher()
+    private val ntfySubscriber = NtfySubscriber()
 
     private var periodicJob: Job? = null
+    private var receiverJob: Job? = null
     private var lastLowBatteryFired = false
     private var lastFullBatteryFired = false
 
@@ -51,10 +56,11 @@ class BatteryMonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        createNotificationChannels()
         registerBatteryReceiver()
         _isServiceRunning.value = true
         prefsRepo.setServiceEnabled(true)
+        loadSubscribedDeviceStates()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -87,6 +93,7 @@ class BatteryMonitorService : Service() {
         }
 
         restartPeriodicTimer()
+        restartReceiverLoop()
         return START_STICKY
     }
 
@@ -94,11 +101,17 @@ class BatteryMonitorService : Service() {
         super.onDestroy()
         unregisterBatteryReceiver()
         periodicJob?.cancel()
+        receiverJob?.cancel()
         _isServiceRunning.value = false
         prefsRepo.setServiceEnabled(false)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun loadSubscribedDeviceStates() {
+        val savedStates = prefsRepo.getSubscribedDeviceStates()
+        _subscribedDeviceStates.value = savedStates
+    }
 
     private fun registerBatteryReceiver() {
         val filter = IntentFilter().apply {
@@ -201,6 +214,86 @@ class BatteryMonitorService : Service() {
         }
     }
 
+    /**
+     * Receiver Loop: Periodically polls or streams battery telemetry from all subscribed remote topics
+     */
+    private fun restartReceiverLoop() {
+        receiverJob?.cancel()
+        val config = prefsRepo.getConfig()
+        if (!config.receiveNotificationsEnabled || config.subscribedTopics.isEmpty()) return
+
+        receiverJob = serviceScope.launch {
+            while (isActive) {
+                val currentConfig = prefsRepo.getConfig()
+                for (subTopic in currentConfig.subscribedTopics) {
+                    if (!isActive) break
+                    try {
+                        val state = ntfySubscriber.fetchLatestDeviceState(currentConfig, subTopic)
+                        if (state != null) {
+                            handleRemoteDeviceStateReceived(state, currentConfig)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                // Poll remote device topics every 30 seconds
+                delay(30_000L)
+            }
+        }
+    }
+
+    private fun handleRemoteDeviceStateReceived(state: SubscribedDeviceState, config: NtfyConfig) {
+        val currentStates = _subscribedDeviceStates.value.toMutableList()
+        val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) || it.deviceName.equals(state.deviceName, ignoreCase = true) }
+        val oldState = if (existingIndex >= 0) currentStates[existingIndex] else null
+
+        if (existingIndex >= 0) {
+            currentStates[existingIndex] = state
+        } else {
+            currentStates.add(0, state)
+        }
+        _subscribedDeviceStates.value = currentStates
+        prefsRepo.saveSubscribedDeviceStates(currentStates)
+
+        // Post Local Android System Notification if battery level is low or status changed
+        if (config.notifyOnRemoteLowBattery) {
+            val isLow = state.batteryPercent <= config.remoteLowBatteryThreshold
+            val stateChanged = oldState == null || oldState.batteryPercent != state.batteryPercent || oldState.isCharging != state.isCharging
+            if (isLow && stateChanged) {
+                postRemoteDeviceSystemNotification(state)
+            }
+        }
+    }
+
+    private fun postRemoteDeviceSystemNotification(state: SubscribedDeviceState) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            state.topic.hashCode(),
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val chargingText = if (state.isCharging) "Charging (${state.pluggedType})" else "Discharging"
+        val notificationTitle = "🪫 [${state.deviceName}] Battery Low: ${state.batteryPercent}%"
+        val notificationText = "${state.deviceName} is $chargingText. Battery level is ${state.batteryPercent}% (${state.triggerEvent})."
+
+        val notification = NotificationCompat.Builder(this, REMOTE_CHANNEL_ID)
+            .setContentTitle(notificationTitle)
+            .setContentText(notificationText)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .build()
+
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(state.topic.hashCode(), notification)
+    }
+
     private fun sendNtfyNotification(
         eventType: String,
         batteryInfo: BatteryInfo,
@@ -219,8 +312,6 @@ class BatteryMonitorService : Service() {
             try {
                 val config = prefsRepo.getConfig()
 
-                // Check if user enabled "Only send alerts when battery is below threshold"
-                // Exempt Low Battery, Full Battery, and Manual Test alerts from filter
                 val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Manual") || eventType.contains("Test")
                 if (!isCriticalOrManual && config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
                     val skippedLog = work.ranjit.batteryntfy.data.NotificationLog(
@@ -252,17 +343,28 @@ class BatteryMonitorService : Service() {
         }
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            val monitorChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Battery Monitor Background Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Shows continuous battery status for remote ntfy publishing"
             }
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
+            nm.createNotificationChannel(monitorChannel)
+
+            val remoteChannel = NotificationChannel(
+                REMOTE_CHANNEL_ID,
+                "Remote Subscribed Device Battery Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when a subscribed remote phone or tablet has low battery"
+                enableVibration(true)
+            }
+            nm.createNotificationChannel(remoteChannel)
         }
     }
 
@@ -300,13 +402,21 @@ class BatteryMonitorService : Service() {
 
     companion object {
         const val CHANNEL_ID = "battery_ntfy_monitor_channel"
+        const val REMOTE_CHANNEL_ID = "battery_ntfy_remote_alerts_channel"
         const val NOTIFICATION_ID = 1001
 
         private val _currentBatteryInfo = MutableStateFlow(BatteryInfo())
         val currentBatteryInfo: StateFlow<BatteryInfo> = _currentBatteryInfo.asStateFlow()
 
+        private val _subscribedDeviceStates = MutableStateFlow<List<SubscribedDeviceState>>(emptyList())
+        val subscribedDeviceStates: StateFlow<List<SubscribedDeviceState>> = _subscribedDeviceStates.asStateFlow()
+
         private val _isServiceRunning = MutableStateFlow(false)
         val isServiceRunning: StateFlow<Boolean> = _isServiceRunning.asStateFlow()
+
+        fun updateSubscribedStates(states: List<SubscribedDeviceState>) {
+            _subscribedDeviceStates.value = states
+        }
 
         fun start(context: Context) {
             try {

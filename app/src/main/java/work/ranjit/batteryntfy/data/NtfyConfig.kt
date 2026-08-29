@@ -18,11 +18,23 @@ data class NtfyConfig(
     val autoStartOnBoot: Boolean = true,
     val onlySendWhenBelowLevelEnabled: Boolean = false,
     val onlySendBelowLevelThreshold: Int = 20,
-    val payloadFormat: String = "standard" // "standard" (ntfy Headers + Text), "pingme_json" (PingMe/Webhook JSON), "raw_text" (Body Text)
+    val payloadFormat: String = "standard", // "standard" (ntfy Headers + Text), "pingme_json" (PingMe/Webhook JSON), "raw_text" (Body Text)
+
+    // Receiver Mode (Subscribed Remote Devices) Settings
+    val subscribedTopics: List<String> = emptyList(),
+    val receiveNotificationsEnabled: Boolean = true,
+    val notifyOnRemoteLowBattery: Boolean = true,
+    val remoteLowBatteryThreshold: Int = 20
 ) {
     fun getFullTopicUrl(): String {
         val cleanServer = serverUrl.trim().removeSuffix("/")
         val cleanTopic = topic.trim()
+        return "$cleanServer/$cleanTopic"
+    }
+
+    fun getFullSubscribedTopicUrl(subTopic: String): String {
+        val cleanServer = serverUrl.trim().removeSuffix("/")
+        val cleanTopic = subTopic.trim()
         return "$cleanServer/$cleanTopic"
     }
 

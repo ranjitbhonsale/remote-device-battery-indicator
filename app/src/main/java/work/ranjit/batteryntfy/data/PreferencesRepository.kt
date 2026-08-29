@@ -9,6 +9,7 @@ class PreferencesRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("battery_ntfy_prefs", Context.MODE_PRIVATE)
 
     fun saveConfig(config: NtfyConfig) {
+        val topicsJsonArray = JSONArray(config.subscribedTopics)
         prefs.edit().apply {
             putString(KEY_DEVICE_NAME, config.deviceName)
             putString(KEY_SERVER_URL, config.serverUrl)
@@ -25,12 +26,31 @@ class PreferencesRepository(context: Context) {
             putBoolean(KEY_ONLY_BELOW_LEVEL_ENABLED, config.onlySendWhenBelowLevelEnabled)
             putInt(KEY_ONLY_BELOW_LEVEL_THRESHOLD, config.onlySendBelowLevelThreshold)
             putString(KEY_PAYLOAD_FORMAT, config.payloadFormat)
+
+            // Receiver settings
+            putString(KEY_SUBSCRIBED_TOPICS, topicsJsonArray.toString())
+            putBoolean(KEY_RECEIVE_NOTIFICATIONS_ENABLED, config.receiveNotificationsEnabled)
+            putBoolean(KEY_NOTIFY_ON_REMOTE_LOW, config.notifyOnRemoteLowBattery)
+            putInt(KEY_REMOTE_LOW_THRESHOLD, config.remoteLowBatteryThreshold)
             apply()
         }
     }
 
     fun getConfig(): NtfyConfig {
         val defaultConfig = NtfyConfig()
+        val rawTopicsJson = prefs.getString(KEY_SUBSCRIBED_TOPICS, null)
+        val topicsList = mutableListOf<String>()
+        if (!rawTopicsJson.isNullOrBlank()) {
+            try {
+                val jsonArr = JSONArray(rawTopicsJson)
+                for (i in 0 until jsonArr.length()) {
+                    topicsList.add(jsonArr.getString(i))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         return NtfyConfig(
             deviceName = prefs.getString(KEY_DEVICE_NAME, defaultConfig.deviceName) ?: defaultConfig.deviceName,
             serverUrl = prefs.getString(KEY_SERVER_URL, defaultConfig.serverUrl) ?: defaultConfig.serverUrl,
@@ -46,8 +66,49 @@ class PreferencesRepository(context: Context) {
             autoStartOnBoot = prefs.getBoolean(KEY_AUTO_START_BOOT, defaultConfig.autoStartOnBoot),
             onlySendWhenBelowLevelEnabled = prefs.getBoolean(KEY_ONLY_BELOW_LEVEL_ENABLED, defaultConfig.onlySendWhenBelowLevelEnabled),
             onlySendBelowLevelThreshold = prefs.getInt(KEY_ONLY_BELOW_LEVEL_THRESHOLD, defaultConfig.onlySendBelowLevelThreshold),
-            payloadFormat = prefs.getString(KEY_PAYLOAD_FORMAT, defaultConfig.payloadFormat) ?: defaultConfig.payloadFormat
+            payloadFormat = prefs.getString(KEY_PAYLOAD_FORMAT, defaultConfig.payloadFormat) ?: defaultConfig.payloadFormat,
+            subscribedTopics = topicsList,
+            receiveNotificationsEnabled = prefs.getBoolean(KEY_RECEIVE_NOTIFICATIONS_ENABLED, defaultConfig.receiveNotificationsEnabled),
+            notifyOnRemoteLowBattery = prefs.getBoolean(KEY_NOTIFY_ON_REMOTE_LOW, defaultConfig.notifyOnRemoteLowBattery),
+            remoteLowBatteryThreshold = prefs.getInt(KEY_REMOTE_LOW_THRESHOLD, defaultConfig.remoteLowBatteryThreshold)
         )
+    }
+
+    // Subscribed Remote Device States
+    fun saveSubscribedDeviceState(state: SubscribedDeviceState) {
+        val currentStates = getSubscribedDeviceStates().toMutableList()
+        val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) || it.deviceName.equals(state.deviceName, ignoreCase = true) }
+        if (existingIndex >= 0) {
+            currentStates[existingIndex] = state
+        } else {
+            currentStates.add(0, state)
+        }
+        saveSubscribedDeviceStates(currentStates)
+    }
+
+    fun saveSubscribedDeviceStates(states: List<SubscribedDeviceState>) {
+        val jsonArray = JSONArray()
+        states.forEach { jsonArray.put(it.toJson()) }
+        prefs.edit().putString(KEY_SUBSCRIBED_DEVICES_JSON, jsonArray.toString()).apply()
+    }
+
+    fun getSubscribedDeviceStates(): List<SubscribedDeviceState> {
+        val rawJson = prefs.getString(KEY_SUBSCRIBED_DEVICES_JSON, null) ?: return emptyList()
+        val list = mutableListOf<SubscribedDeviceState>()
+        try {
+            val jsonArray = JSONArray(rawJson)
+            for (i in 0 until jsonArray.length()) {
+                list.add(SubscribedDeviceState.fromJson(jsonArray.getJSONObject(i)))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return list
+    }
+
+    fun removeSubscribedDeviceState(topic: String) {
+        val currentStates = getSubscribedDeviceStates().filterNot { it.topic.equals(topic, ignoreCase = true) }
+        saveSubscribedDeviceStates(currentStates)
     }
 
     fun saveLogs(logs: List<NotificationLog>) {
@@ -131,6 +192,13 @@ class PreferencesRepository(context: Context) {
         private const val KEY_ONLY_BELOW_LEVEL_ENABLED = "only_below_level_enabled"
         private const val KEY_ONLY_BELOW_LEVEL_THRESHOLD = "only_below_level_threshold"
         private const val KEY_PAYLOAD_FORMAT = "payload_format"
+
+        private const val KEY_SUBSCRIBED_TOPICS = "subscribed_topics"
+        private const val KEY_RECEIVE_NOTIFICATIONS_ENABLED = "receive_notifications_enabled"
+        private const val KEY_NOTIFY_ON_REMOTE_LOW = "notify_on_remote_low"
+        private const val KEY_REMOTE_LOW_THRESHOLD = "remote_low_threshold"
+        private const val KEY_SUBSCRIBED_DEVICES_JSON = "subscribed_devices_json"
+
         private const val KEY_LOGS_JSON = "logs_json"
         private const val KEY_SERVICE_ENABLED = "service_enabled"
     }
