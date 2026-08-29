@@ -51,10 +51,15 @@ class PreferencesRepository(context: Context) {
             }
         }
 
+        val loadedDeviceName = prefs.getString(KEY_DEVICE_NAME, defaultConfig.deviceName) ?: defaultConfig.deviceName
+        val defaultTopic = NtfyConfig.defaultTopicForDevice(loadedDeviceName)
+        val rawTopic = prefs.getString(KEY_TOPIC, null)
+        val loadedTopic = if (rawTopic.isNullOrBlank() || rawTopic.startsWith("battery-mon-")) defaultTopic else rawTopic
+
         return NtfyConfig(
-            deviceName = prefs.getString(KEY_DEVICE_NAME, defaultConfig.deviceName) ?: defaultConfig.deviceName,
+            deviceName = loadedDeviceName,
             serverUrl = prefs.getString(KEY_SERVER_URL, defaultConfig.serverUrl) ?: defaultConfig.serverUrl,
-            topic = prefs.getString(KEY_TOPIC, defaultConfig.topic) ?: defaultConfig.topic,
+            topic = loadedTopic,
             authToken = prefs.getString(KEY_AUTH_TOKEN, defaultConfig.authToken) ?: defaultConfig.authToken,
             defaultPriority = prefs.getInt(KEY_DEFAULT_PRIORITY, defaultConfig.defaultPriority),
             notifyOnPowerEvents = prefs.getBoolean(KEY_NOTIFY_POWER_EVENTS, defaultConfig.notifyOnPowerEvents),

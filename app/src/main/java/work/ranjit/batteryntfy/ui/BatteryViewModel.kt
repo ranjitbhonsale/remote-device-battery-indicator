@@ -74,12 +74,29 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val cleanTopic = newTopic.trim()
         if (cleanTopic.isBlank()) return
         val currentConfig = config.value
-        if (!currentConfig.subscribedTopics.contains(cleanTopic)) {
-            val updatedTopics = currentConfig.subscribedTopics + cleanTopic
-            val updatedConfig = currentConfig.copy(subscribedTopics = updatedTopics)
-            updateConfig(updatedConfig)
-            pollSingleRemoteDevice(cleanTopic)
+        val updatedTopics = if (!currentConfig.subscribedTopics.contains(cleanTopic)) {
+            currentConfig.subscribedTopics + cleanTopic
+        } else {
+            currentConfig.subscribedTopics
         }
+        val updatedConfig = currentConfig.copy(subscribedTopics = updatedTopics)
+        updateConfig(updatedConfig)
+
+        // Immediately insert placeholder state so UI updates instantly
+        val existingIndex = prefsRepo.getSubscribedDeviceStates().indexOfFirst { it.topic.equals(cleanTopic, ignoreCase = true) }
+        if (existingIndex < 0) {
+            val placeholder = SubscribedDeviceState(
+                topic = cleanTopic,
+                deviceName = cleanTopic,
+                batteryPercent = 50,
+                isCharging = false,
+                triggerEvent = "Connecting to device..."
+            )
+            prefsRepo.saveSubscribedDeviceState(placeholder)
+            BatteryMonitorService.updateSubscribedStates(prefsRepo.getSubscribedDeviceStates())
+        }
+
+        pollSingleRemoteDevice(cleanTopic)
     }
 
     fun removeSubscribedTopic(topicToRemove: String) {
@@ -101,14 +118,24 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
 
             for (topic in currentConfig.subscribedTopics) {
                 val newState = ntfySubscriber.fetchLatestDeviceState(currentConfig, topic)
+                val index = currentStates.indexOfFirst { it.topic.equals(topic, ignoreCase = true) }
                 if (newState != null) {
-                    val index = currentStates.indexOfFirst { it.topic.equals(topic, ignoreCase = true) }
                     if (index >= 0) {
                         currentStates[index] = newState
                     } else {
                         currentStates.add(0, newState)
                     }
                     prefsRepo.saveSubscribedDeviceState(newState)
+                } else if (index < 0) {
+                    // Ensure placeholder exists if state not fetched yet
+                    val placeholder = SubscribedDeviceState(
+                        topic = topic,
+                        deviceName = topic,
+                        batteryPercent = 50,
+                        triggerEvent = "Waiting for status update..."
+                    )
+                    currentStates.add(0, placeholder)
+                    prefsRepo.saveSubscribedDeviceState(placeholder)
                 }
             }
             BatteryMonitorService.updateSubscribedStates(currentStates)
@@ -120,11 +147,27 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _isRefreshingRemoteDevices.value = true
             val newState = ntfySubscriber.fetchLatestDeviceState(config.value, topic)
+            val currentStates = prefsRepo.getSubscribedDeviceStates().toMutableList()
+            val index = currentStates.indexOfFirst { it.topic.equals(topic, ignoreCase = true) }
+
             if (newState != null) {
+                if (index >= 0) {
+                    currentStates[index] = newState
+                } else {
+                    currentStates.add(0, newState)
+                }
                 prefsRepo.saveSubscribedDeviceState(newState)
-                val currentStates = prefsRepo.getSubscribedDeviceStates()
-                BatteryMonitorService.updateSubscribedStates(currentStates)
+            } else if (index < 0) {
+                val placeholder = SubscribedDeviceState(
+                    topic = topic,
+                    deviceName = topic,
+                    batteryPercent = 50,
+                    triggerEvent = "Waiting for status update..."
+                )
+                currentStates.add(0, placeholder)
+                prefsRepo.saveSubscribedDeviceState(placeholder)
             }
+            BatteryMonitorService.updateSubscribedStates(currentStates)
             _isRefreshingRemoteDevices.value = false
         }
     }

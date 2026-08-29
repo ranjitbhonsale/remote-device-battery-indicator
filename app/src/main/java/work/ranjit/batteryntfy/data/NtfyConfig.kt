@@ -1,12 +1,11 @@
 package work.ranjit.batteryntfy.data
 
 import android.os.Build
-import java.util.UUID
 
 data class NtfyConfig(
     val deviceName: String = Build.MODEL ?: "My Android Device",
     val serverUrl: String = "https://ntfy.sh",
-    val topic: String = "battery-mon-" + UUID.randomUUID().toString().take(6),
+    val topic: String = defaultTopicForDevice(Build.MODEL ?: "My Android Device"),
     val authToken: String = "", // Optional Bearer token or Basic auth
     val defaultPriority: Int = 3, // 1: Min, 2: Low, 3: Default, 4: High, 5: Urgent
     val notifyOnPowerEvents: Boolean = true, // Plugged in / Unplugged
@@ -39,6 +38,11 @@ data class NtfyConfig(
     }
 
     companion object {
+        fun defaultTopicForDevice(deviceName: String): String {
+            val formatted = deviceName.trim().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+            return if (formatted.isNotBlank()) formatted else "my-android-device"
+        }
+
         fun priorityName(priority: Int): String {
             return when (priority) {
                 1 -> "Min (1)"
