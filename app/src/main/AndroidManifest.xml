@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Explicitly declare hardware features as OPTIONAL so Wi-Fi only tablets are 100% compatible -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -20,6 +24,7 @@
         android:usesCleartextTraffic="true"
         android:windowSoftInputMode="adjustResize"
         android:theme="@style/Theme.BatteryNtfy">
+        
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -33,10 +38,10 @@
             android:name=".service.BatteryMonitorService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="dataSync">
             <property
-                android:name="android.app.property.FOREGROUND_SERVICE_TYPE_SPECIAL_USE"
-                android:value="Monitors battery status in the background and sends real-time remote ntfy alerts" />
+                android:name="android.app.property.FOREGROUND_SERVICE_TYPE_DATA_SYNC"
+                android:value="Monitors battery status in background and syncs remote ntfy telemetry" />
         </service>
 
         <receiver

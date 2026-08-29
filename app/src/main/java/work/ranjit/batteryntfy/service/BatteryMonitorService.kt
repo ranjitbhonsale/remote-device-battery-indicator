@@ -72,18 +72,10 @@ class BatteryMonitorService : Service() {
                     startForeground(
                         NOTIFICATION_ID,
                         notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                     )
                 } catch (e: Exception) {
-                    try {
-                        startForeground(
-                            NOTIFICATION_ID,
-                            notification,
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                        )
-                    } catch (e2: Exception) {
-                        startForeground(NOTIFICATION_ID, notification)
-                    }
+                    startForeground(NOTIFICATION_ID, notification)
                 }
             } else {
                 startForeground(NOTIFICATION_ID, notification)
