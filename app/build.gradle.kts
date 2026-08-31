@@ -9,10 +9,10 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "work.ranjit.batteryntfy"
-        minSdk = 24
+        minSdk = 23
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.7"
+        versionCode = 9
+        versionName = "1.8"
     }
 
     signingConfigs {
