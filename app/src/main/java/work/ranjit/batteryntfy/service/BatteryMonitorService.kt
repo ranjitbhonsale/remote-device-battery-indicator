@@ -41,6 +41,8 @@ class BatteryMonitorService : Service() {
 
     private var periodicJob: Job? = null
     private var receiverJob: Job? = null
+    private var streamJob: Job? = null
+    private var lastRefreshResponseTime = 0L
     private var lastLowBatteryFired = false
     private var lastFullBatteryFired = false
 
@@ -94,6 +96,7 @@ class BatteryMonitorService : Service() {
         unregisterBatteryReceiver()
         periodicJob?.cancel()
         receiverJob?.cancel()
+        streamJob?.cancel()
         _isServiceRunning.value = false
         prefsRepo.setServiceEnabled(false)
     }
@@ -207,31 +210,89 @@ class BatteryMonitorService : Service() {
     }
 
     /**
-     * Receiver Loop: Periodically polls or streams battery telemetry from all subscribed remote topics
+     * Receiver & Command Loop: Periodically polls and streams battery telemetry and listens for on-demand refresh commands
      */
     private fun restartReceiverLoop() {
         receiverJob?.cancel()
-        val config = prefsRepo.getConfig()
-        if (!config.receiveNotificationsEnabled || config.subscribedTopics.isEmpty()) return
+        streamJob?.cancel()
 
+        val config = prefsRepo.getConfig()
+        val allTopics = (listOf(config.topic) + config.subscribedTopics).filter { it.isNotBlank() }.distinct()
+        if (allTopics.isEmpty()) return
+
+        // 1. Stream real-time events via SSE
+        streamJob = serviceScope.launch {
+            while (isActive) {
+                val currentConfig = prefsRepo.getConfig()
+                val currentTopics = (listOf(currentConfig.topic) + currentConfig.subscribedTopics).filter { it.isNotBlank() }.distinct()
+                try {
+                    ntfySubscriber.streamSubscribedTopics(
+                        config = currentConfig,
+                        topics = currentTopics,
+                        onStateReceived = { state ->
+                            handleRemoteDeviceStateReceived(state, currentConfig)
+                        },
+                        onRefreshRequested = { reqTopic ->
+                            handleIncomingRefreshRequest(reqTopic)
+                        }
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                delay(5000L)
+            }
+        }
+
+        // 2. Periodic polling loop for both incoming refresh requests on own topic and subscribed topics
         receiverJob = serviceScope.launch {
             while (isActive) {
                 val currentConfig = prefsRepo.getConfig()
-                for (subTopic in currentConfig.subscribedTopics) {
-                    if (!isActive) break
+
+                // Check for incoming refresh requests on local broadcast topic
+                if (currentConfig.topic.isNotBlank()) {
                     try {
-                        val state = ntfySubscriber.fetchLatestDeviceState(currentConfig, subTopic)
-                        if (state != null) {
-                            handleRemoteDeviceStateReceived(state, currentConfig)
+                        val hasRefreshRequest = ntfySubscriber.checkTopicForRefreshRequest(currentConfig, currentConfig.topic, "1m")
+                        if (hasRefreshRequest) {
+                            handleIncomingRefreshRequest(currentConfig.topic)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }
-                // Poll remote device topics every 30 seconds
-                delay(30_000L)
+
+                // Poll remote devices if receiver notifications enabled
+                if (currentConfig.receiveNotificationsEnabled && currentConfig.subscribedTopics.isNotEmpty()) {
+                    for (subTopic in currentConfig.subscribedTopics) {
+                        if (!isActive) break
+                        try {
+                            val state = ntfySubscriber.fetchLatestDeviceState(currentConfig, subTopic)
+                            if (state != null) {
+                                handleRemoteDeviceStateReceived(state, currentConfig)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+                // Poll remote device topics and check commands every 25 seconds
+                delay(25_000L)
             }
         }
+    }
+
+    private fun handleIncomingRefreshRequest(topic: String) {
+        val now = System.currentTimeMillis()
+        // Debounce requests within 3 seconds to avoid duplicate response bursts
+        if (now - lastRefreshResponseTime < 3000L) return
+        lastRefreshResponseTime = now
+
+        val config = prefsRepo.getConfig()
+        sendNtfyNotification(
+            eventType = "On-Demand Refresh",
+            batteryInfo = _currentBatteryInfo.value,
+            priority = config.defaultPriority,
+            tags = listOf("battery", "refresh_response")
+        )
     }
 
     private fun handleRemoteDeviceStateReceived(state: SubscribedDeviceState, config: NtfyConfig) {

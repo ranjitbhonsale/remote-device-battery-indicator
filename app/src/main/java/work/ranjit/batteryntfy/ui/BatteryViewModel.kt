@@ -44,6 +44,9 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     private val _isRefreshingRemoteDevices = MutableStateFlow(false)
     val isRefreshingRemoteDevices: StateFlow<Boolean> = _isRefreshingRemoteDevices.asStateFlow()
 
+    private val _refreshingDevices = MutableStateFlow<Set<String>>(emptySet())
+    val refreshingDevices: StateFlow<Set<String>> = _refreshingDevices.asStateFlow()
+
     private val _testResult = MutableStateFlow<String?>(null)
     val testResult: StateFlow<String?> = _testResult.asStateFlow()
 
@@ -110,37 +113,82 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         BatteryMonitorService.updateSubscribedStates(remainingStates)
     }
 
-    fun refreshSubscribedDevices() {
-        viewModelScope.launch {
-            _isRefreshingRemoteDevices.value = true
-            val currentConfig = config.value
-            val currentStates = prefsRepo.getSubscribedDeviceStates().toMutableList()
+    /**
+     * Sends an on-demand refresh message to a specific remote device and polls for the response
+     */
+    fun requestDeviceRefresh(topic: String) {
+        val cleanTopic = topic.trim()
+        if (cleanTopic.isBlank()) return
 
-            for (topic in currentConfig.subscribedTopics) {
-                val newState = ntfySubscriber.fetchLatestDeviceState(currentConfig, topic)
-                val index = currentStates.indexOfFirst { it.topic.equals(topic, ignoreCase = true) }
+        viewModelScope.launch {
+            _refreshingDevices.value = _refreshingDevices.value + cleanTopic
+            val currentConfig = config.value
+
+            // 1. Dispatch on-demand refresh command to the remote device
+            val log = ntfyPublisher.publishRefreshRequest(currentConfig, cleanTopic)
+            prefsRepo.addLog(log)
+            refreshLogs()
+
+            // 2. Poll for updated state from the transmitter
+            for (attempt in 1..4) {
+                delay(attempt * 1000L)
+                val newState = ntfySubscriber.fetchLatestDeviceState(currentConfig, cleanTopic)
                 if (newState != null) {
-                    if (index >= 0) {
-                        currentStates[index] = newState
-                    } else {
-                        currentStates.add(0, newState)
-                    }
                     prefsRepo.saveSubscribedDeviceState(newState)
-                } else if (index < 0) {
-                    // Ensure placeholder exists if state not fetched yet
-                    val placeholder = SubscribedDeviceState(
-                        topic = topic,
-                        deviceName = topic,
-                        batteryPercent = 50,
-                        triggerEvent = "Waiting for status update..."
-                    )
-                    currentStates.add(0, placeholder)
-                    prefsRepo.saveSubscribedDeviceState(placeholder)
+                    BatteryMonitorService.updateSubscribedStates(prefsRepo.getSubscribedDeviceStates())
+                    break
                 }
             }
-            BatteryMonitorService.updateSubscribedStates(currentStates)
+
+            _refreshingDevices.value = _refreshingDevices.value - cleanTopic
+        }
+    }
+
+    /**
+     * Sends on-demand refresh messages to all subscribed devices
+     */
+    fun requestRefreshAllDevices() {
+        val topics = config.value.subscribedTopics
+        if (topics.isEmpty()) return
+
+        viewModelScope.launch {
+            _isRefreshingRemoteDevices.value = true
+            _refreshingDevices.value = _refreshingDevices.value + topics.toSet()
+            val currentConfig = config.value
+
+            // 1. Send refresh requests to all remote topics
+            topics.forEach { subTopic ->
+                val log = ntfyPublisher.publishRefreshRequest(currentConfig, subTopic)
+                prefsRepo.addLog(log)
+            }
+            refreshLogs()
+
+            // 2. Poll for fresh data
+            for (attempt in 1..3) {
+                delay(attempt * 1200L)
+                val currentStates = prefsRepo.getSubscribedDeviceStates().toMutableList()
+                for (subTopic in topics) {
+                    val newState = ntfySubscriber.fetchLatestDeviceState(currentConfig, subTopic)
+                    if (newState != null) {
+                        val idx = currentStates.indexOfFirst { it.topic.equals(subTopic, ignoreCase = true) }
+                        if (idx >= 0) {
+                            currentStates[idx] = newState
+                        } else {
+                            currentStates.add(0, newState)
+                        }
+                        prefsRepo.saveSubscribedDeviceState(newState)
+                    }
+                }
+                BatteryMonitorService.updateSubscribedStates(currentStates)
+            }
+
+            _refreshingDevices.value = _refreshingDevices.value - topics.toSet()
             _isRefreshingRemoteDevices.value = false
         }
+    }
+
+    fun refreshSubscribedDevices() {
+        requestRefreshAllDevices()
     }
 
     private fun pollSingleRemoteDevice(topic: String) {

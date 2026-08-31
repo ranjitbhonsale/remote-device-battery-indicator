@@ -52,14 +52,34 @@ data class SubscribedDeviceState(
         }
 
         /**
-         * Parse incoming ntfy payload text or JSON into a SubscribedDeviceState object
+         * Checks if an incoming payload is a command to refresh battery status
+         */
+        fun isRefreshRequest(
+            title: String,
+            message: String,
+            tags: List<String> = emptyList()
+        ): Boolean {
+            val fullText = "$title\n$message"
+            return fullText.contains("REFRESH_REQUEST", ignoreCase = true) ||
+                    fullText.contains("BATTERY_REFRESH_REQUEST", ignoreCase = true) ||
+                    tags.contains("refresh_request") ||
+                    tags.contains("cmd_refresh")
+        }
+
+        /**
+         * Parse incoming ntfy payload text or JSON into a SubscribedDeviceState object.
+         * Returns null if the payload is a command (e.g. refresh request) rather than telemetry.
          */
         fun parseFromNtfyPayload(
             topic: String,
             title: String,
             message: String,
             tags: List<String> = emptyList()
-        ): SubscribedDeviceState {
+        ): SubscribedDeviceState? {
+            if (isRefreshRequest(title, message, tags)) {
+                return null
+            }
+
             var deviceName = "Remote Device"
             var batteryPercent = -1
             var isCharging = false
@@ -73,6 +93,10 @@ data class SubscribedDeviceState(
             if (message.trim().startsWith("{") && message.trim().endsWith("}")) {
                 try {
                     val jsonObj = JSONObject(message.trim())
+                    val action = jsonObj.optString("action", "")
+                    if (action.equals("REFRESH_REQUEST", ignoreCase = true)) {
+                        return null
+                    }
                     deviceName = jsonObj.optString("device", jsonObj.optString("deviceName", deviceName))
                     val bodyText = jsonObj.optString("body", jsonObj.optString("text", message))
                     return parseFromTextAndHeaders(topic, title.ifBlank { jsonObj.optString("title") }, bodyText, deviceName)
@@ -89,7 +113,7 @@ data class SubscribedDeviceState(
             title: String,
             message: String,
             defaultDeviceName: String
-        ): SubscribedDeviceState {
+        ): SubscribedDeviceState? {
             var deviceName = defaultDeviceName
             var batteryPercent = -1
             var isCharging = false

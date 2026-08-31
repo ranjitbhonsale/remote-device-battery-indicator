@@ -45,6 +45,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
     val config by viewModel.config.collectAsState()
     val subscribedDeviceStates by viewModel.subscribedDeviceStates.collectAsState()
     val isRefreshingRemoteDevices by viewModel.isRefreshingRemoteDevices.collectAsState()
+    val refreshingDevices by viewModel.refreshingDevices.collectAsState()
     val context = LocalContext.current
 
     var showAddTopicDialog by remember { mutableStateOf(false) }
@@ -86,13 +87,13 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 IconButton(
-                    onClick = { viewModel.refreshSubscribedDevices() },
+                    onClick = { viewModel.requestRefreshAllDevices() },
                     enabled = !isRefreshingRemoteDevices
                 ) {
                     if (isRefreshingRemoteDevices) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh Remote Devices")
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh All Remote Devices")
                     }
                 }
 
@@ -172,6 +173,8 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 subscribedDeviceStates.forEach { remoteDevice ->
                     RemoteDeviceCard(
                         deviceState = remoteDevice,
+                        isRefreshing = refreshingDevices.contains(remoteDevice.topic),
+                        onRefresh = { viewModel.requestDeviceRefresh(remoteDevice.topic) },
                         onDelete = { viewModel.removeSubscribedTopic(remoteDevice.topic) }
                     )
                 }
@@ -529,6 +532,8 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 @Composable
 fun RemoteDeviceCard(
     deviceState: SubscribedDeviceState,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit,
     onDelete: () -> Unit
 ) {
     val level = deviceState.batteryPercent.coerceIn(0, 100)
@@ -563,7 +568,8 @@ fun RemoteDeviceCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Surface(
                         shape = CircleShape,
@@ -590,13 +596,41 @@ fun RemoteDeviceCard(
                     }
                 }
 
-                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        Icons.Default.DeleteOutline,
-                        contentDescription = "Unsubscribe",
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(18.dp)
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // On-Demand Refresh Button
+                    IconButton(
+                        onClick = onRefresh,
+                        enabled = !isRefreshing,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Request Battery Refresh",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // Delete / Unsubscribe Button
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Unsubscribe",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -630,23 +664,43 @@ fun RemoteDeviceCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = cardColor.copy(alpha = 0.12f)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = if (deviceState.isCharging) "🔌 ${deviceState.pluggedType}" else "🔋 Discharging",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = cardColor,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = cardColor.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = if (deviceState.isCharging) "🔌 ${deviceState.pluggedType}" else "🔋 Discharging",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = cardColor,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    if (deviceState.temperatureCelsius > 0f) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                text = "🌡️ ${deviceState.temperatureCelsius}°C",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                 }
 
                 Text(
-                    text = "Updated: $timeFormatted",
+                    text = if (isRefreshing) "Refreshing..." else "Updated: $timeFormatted",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (isRefreshing) FontWeight.Bold else FontWeight.Normal
                 )
             }
         }

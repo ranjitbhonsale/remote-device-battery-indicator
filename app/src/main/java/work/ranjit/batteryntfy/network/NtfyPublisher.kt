@@ -149,6 +149,119 @@ class NtfyPublisher {
         )
     }
 
+    suspend fun publishRefreshRequest(
+        config: NtfyConfig,
+        targetTopic: String
+    ): NotificationLog = withContext(Dispatchers.IO) {
+        val rawTopic = targetTopic.trim()
+        if (rawTopic.isBlank()) {
+            return@withContext NotificationLog(
+                eventType = "Refresh Request",
+                batteryPercent = 0,
+                title = "Refresh Error",
+                message = "Target topic cannot be blank",
+                isSuccess = false,
+                responseCode = 0,
+                errorMessage = "Blank topic"
+            )
+        }
+
+        val cleanServer = config.serverUrl.trim().removeSuffix("/")
+        val title = "⚡ BATTERY_REFRESH_REQUEST"
+        val requestMessage = "REFRESH_REQUEST:${config.deviceName}:${System.currentTimeMillis()}"
+        val tags = listOf("refresh_request", "cmd_refresh", "battery")
+        val priority = 4 // High priority for instant command delivery
+
+        val format = config.payloadFormat
+        val topicClean = if (format == "pingme_json" && !rawTopic.startsWith("work_ranjit_")) {
+            "work_ranjit_$rawTopic"
+        } else {
+            rawTopic
+        }
+        val targetUrl = "$cleanServer/$topicClean"
+
+        var responseCode = -1
+        var isSuccess = false
+        var errorMessage = ""
+
+        try {
+            val url = URL(targetUrl)
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 10000
+                readTimeout = 10000
+                instanceFollowRedirects = true
+
+                setRequestProperty("User-Agent", "BatteryNtfy/1.0 (Android)")
+                setRequestProperty("Title", title)
+                setRequestProperty("Priority", priority.toString())
+                setRequestProperty("Tags", tags.joinToString(","))
+                if (config.authToken.isNotBlank()) {
+                    val auth = if (config.authToken.startsWith("Bearer ") || config.authToken.startsWith("Basic ")) {
+                        config.authToken
+                    } else {
+                        "Bearer ${config.authToken}"
+                    }
+                    setRequestProperty("Authorization", auth)
+                }
+
+                if (format == "pingme_json") {
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                } else {
+                    setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+                }
+            }
+
+            val payloadText = if (format == "pingme_json") {
+                JSONObject().apply {
+                    put("topic", topicClean)
+                    put("device", config.deviceName)
+                    put("deviceName", config.deviceName)
+                    put("title", title)
+                    put("message", rawTopic)
+                    put("text", requestMessage)
+                    put("body", requestMessage)
+                    put("action", "REFRESH_REQUEST")
+                    put("priority", priority)
+                    put("tags", JSONArray(tags))
+                }.toString()
+            } else {
+                requestMessage
+            }
+
+            OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use { writer ->
+                writer.write(payloadText)
+                writer.flush()
+            }
+
+            responseCode = connection.responseCode
+            isSuccess = responseCode in 200..299
+            if (!isSuccess) {
+                val errorStream = connection.errorStream
+                val errText = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                errorMessage = "HTTP Error $responseCode: ${connection.responseMessage ?: "Unknown"}${if (errText.isNotBlank()) " ($errText)" else ""}"
+            }
+            connection.disconnect()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            isSuccess = false
+            responseCode = 0
+            val rawErr = e.localizedMessage ?: e.message ?: e.javaClass.simpleName
+            errorMessage = rawErr
+        }
+
+        return@withContext NotificationLog(
+            eventType = "Refresh Request",
+            batteryPercent = 0,
+            title = "Requested Refresh: $rawTopic",
+            message = "Sent on-demand battery refresh request to device topic $rawTopic",
+            isSuccess = isSuccess,
+            responseCode = responseCode,
+            errorMessage = errorMessage
+        )
+    }
+
     private fun buildTitle(eventType: String, batteryInfo: BatteryInfo, config: NtfyConfig): String {
         val icon = when {
             batteryInfo.isCharging -> "🔌"
