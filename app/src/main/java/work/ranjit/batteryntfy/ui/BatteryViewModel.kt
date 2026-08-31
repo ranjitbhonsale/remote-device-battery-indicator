@@ -16,6 +16,7 @@ import work.ranjit.batteryntfy.data.SubscribedDeviceState
 import work.ranjit.batteryntfy.network.NtfyPublisher
 import work.ranjit.batteryntfy.network.NtfySubscriber
 import work.ranjit.batteryntfy.service.BatteryMonitorService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
