@@ -205,7 +205,121 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
             }
         }
 
-        // Section 2: Sender Mode & Device Nickname Card
+        // Section 2: Distinct Low Battery Alert Settings Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color(0xFFEF4444))
+                    Text(
+                        text = "Distinct Low Battery Alerts",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Text(
+                    text = "Triggers an urgent alarm sound, 3-pulse vibration, and heads-up banner when ANY device battery drops below preset low threshold.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Local Device Low Battery Threshold Preset Chips
+                Text(
+                    text = "This Device Low Battery Threshold: ${config.lowBatteryThreshold}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf(10, 15, 20, 25, 30).forEach { thresholdVal ->
+                        val isSelected = config.lowBatteryThreshold == thresholdVal
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.updateConfig(config.copy(lowBatteryThreshold = thresholdVal)) },
+                            label = {
+                                Text(
+                                    text = "$thresholdVal%",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                // Remote Devices Low Battery Threshold Preset Chips
+                Text(
+                    text = "Remote Devices Low Battery Threshold: ${config.remoteLowBatteryThreshold}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf(10, 15, 20, 25, 30).forEach { thresholdVal ->
+                        val isSelected = config.remoteLowBatteryThreshold == thresholdVal
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.updateConfig(config.copy(remoteLowBatteryThreshold = thresholdVal)) },
+                            label = {
+                                Text(
+                                    text = "$thresholdVal%",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // Test Alert Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.triggerTestDistinctAlert(isLocal = true) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Test Local Alert", fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.triggerTestDistinctAlert(isLocal = false) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Vibration, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Test Remote Alert", fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        // Section 3: Sender Mode & Device Nickname Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),

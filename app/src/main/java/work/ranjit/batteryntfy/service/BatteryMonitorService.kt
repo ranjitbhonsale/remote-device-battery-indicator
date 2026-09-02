@@ -10,6 +10,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
@@ -42,9 +44,10 @@ class BatteryMonitorService : Service() {
     private var periodicJob: Job? = null
     private var receiverJob: Job? = null
     private var streamJob: Job? = null
-    private var lastRefreshResponseTime = 0L
+
     private var lastLowBatteryFired = false
     private var lastFullBatteryFired = false
+    private var lastRefreshResponseTime = 0L
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -158,10 +161,18 @@ class BatteryMonitorService : Service() {
 
         val config = prefsRepo.getConfig()
 
-        // Check Low Battery Alert Trigger
+        // Check Low Battery Alert Trigger for Local Device
         if (config.notifyOnLowBattery && percent <= config.lowBatteryThreshold) {
             if (!lastLowBatteryFired && !isCharging) {
                 lastLowBatteryFired = true
+                postDistinctLowBatteryNotification(
+                    deviceName = config.deviceName,
+                    batteryPercent = percent,
+                    isCharging = isCharging,
+                    pluggedType = pluggedType,
+                    isLocalDevice = true,
+                    triggerEvent = "Local Battery Warning"
+                )
                 sendNtfyNotification("Low Battery Alert", newInfo, priority = 5, tags = listOf("warning", "battery", "zap"))
             }
         } else if (percent > config.lowBatteryThreshold + 3) {
@@ -282,7 +293,6 @@ class BatteryMonitorService : Service() {
 
     private fun handleIncomingRefreshRequest(topic: String) {
         val now = System.currentTimeMillis()
-        // Debounce requests within 3 seconds to avoid duplicate response bursts
         if (now - lastRefreshResponseTime < 3000L) return
         lastRefreshResponseTime = now
 
@@ -308,43 +318,70 @@ class BatteryMonitorService : Service() {
         _subscribedDeviceStates.value = currentStates
         prefsRepo.saveSubscribedDeviceStates(currentStates)
 
-        // Post Local Android System Notification if battery level is low or status changed
+        // Post Local Android System Notification if remote battery level drops below preset threshold
         if (config.notifyOnRemoteLowBattery) {
-            val isLow = state.batteryPercent <= config.remoteLowBatteryThreshold
+            val isLow = state.batteryPercent in 1..config.remoteLowBatteryThreshold
             val stateChanged = oldState == null || oldState.batteryPercent != state.batteryPercent || oldState.isCharging != state.isCharging
-            if (isLow && stateChanged) {
-                postRemoteDeviceSystemNotification(state)
+            if (isLow && stateChanged && !state.isCharging) {
+                postDistinctLowBatteryNotification(
+                    deviceName = state.deviceName,
+                    batteryPercent = state.batteryPercent,
+                    isCharging = state.isCharging,
+                    pluggedType = state.pluggedType,
+                    isLocalDevice = false,
+                    triggerEvent = state.triggerEvent
+                )
             }
         }
     }
 
-    private fun postRemoteDeviceSystemNotification(state: SubscribedDeviceState) {
+    private fun postDistinctLowBatteryNotification(
+        deviceName: String,
+        batteryPercent: Int,
+        isCharging: Boolean,
+        pluggedType: String,
+        isLocalDevice: Boolean,
+        triggerEvent: String
+    ) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
+        val notificationId = if (isLocalDevice) 9999 else deviceName.hashCode()
         val pendingIntent = PendingIntent.getActivity(
             this,
-            state.topic.hashCode(),
+            notificationId,
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val chargingText = if (state.isCharging) "Charging (${state.pluggedType})" else "Discharging"
-        val notificationTitle = "🪫 [${state.deviceName}] Battery Low: ${state.batteryPercent}%"
-        val notificationText = "${state.deviceName} is $chargingText. Battery level is ${state.batteryPercent}% (${state.triggerEvent})."
+        val chargingText = if (isCharging) "Charging ($pluggedType)" else "Discharging"
+        val title = if (isLocalDevice) {
+            "🚨 THIS DEVICE LOW BATTERY: $batteryPercent%"
+        } else {
+            "🪫 REMOTE LOW BATTERY: [$deviceName] is at $batteryPercent%"
+        }
 
-        val notification = NotificationCompat.Builder(this, REMOTE_CHANNEL_ID)
-            .setContentTitle(notificationTitle)
-            .setContentText(notificationText)
+        val text = if (isLocalDevice) {
+            "This device ($deviceName) is $chargingText. Battery level has dropped to $batteryPercent%. Please plug in charger."
+        } else {
+            "Remote device ($deviceName) is $chargingText. Battery level has dropped to $batteryPercent% ($triggerEvent)."
+        }
+
+        val notification = NotificationCompat.Builder(this, DISTINCT_LOW_BATTERY_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSubText(if (isLocalDevice) "Local Battery Alert" else "Remote Battery Alert")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setVibrate(longArrayOf(0, 400, 200, 400, 200, 400))
             .build()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(state.topic.hashCode(), notification)
+        nm.notify(notificationId, notification)
     }
 
     private fun sendNtfyNotification(
@@ -365,7 +402,7 @@ class BatteryMonitorService : Service() {
             try {
                 val config = prefsRepo.getConfig()
 
-                val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Manual") || eventType.contains("Test")
+                val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Manual") || eventType.contains("Test") || eventType.contains("Refresh")
                 if (!isCriticalOrManual && config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
                     val skippedLog = work.ranjit.batteryntfy.data.NotificationLog(
                         eventType = "$eventType (Filtered)",
@@ -418,6 +455,24 @@ class BatteryMonitorService : Service() {
                 enableVibration(true)
             }
             nm.createNotificationChannel(remoteChannel)
+
+            val distinctLowChannel = NotificationChannel(
+                DISTINCT_LOW_BATTERY_CHANNEL_ID,
+                "🚨 Distinct Low Battery Warning Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Urgent alerts with distinct alarm sound & vibration when any local or remote device battery drops below preset threshold"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 400)
+                enableLights(true)
+                lightColor = android.graphics.Color.RED
+                val audioAttrs = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build()
+                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttrs)
+            }
+            nm.createNotificationChannel(distinctLowChannel)
         }
     }
 
@@ -456,6 +511,7 @@ class BatteryMonitorService : Service() {
     companion object {
         const val CHANNEL_ID = "battery_ntfy_monitor_channel"
         const val REMOTE_CHANNEL_ID = "battery_ntfy_remote_alerts_channel"
+        const val DISTINCT_LOW_BATTERY_CHANNEL_ID = "battery_ntfy_distinct_low_battery_channel"
         const val NOTIFICATION_ID = 1001
 
         private val _currentBatteryInfo = MutableStateFlow(BatteryInfo())
@@ -466,6 +522,37 @@ class BatteryMonitorService : Service() {
 
         private val _isServiceRunning = MutableStateFlow(false)
         val isServiceRunning: StateFlow<Boolean> = _isServiceRunning.asStateFlow()
+
+        fun triggerTestDistinctAlert(context: Context, isLocal: Boolean, deviceName: String, percent: Int) {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                8888,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            val title = if (isLocal) "🚨 TEST: THIS DEVICE LOW BATTERY ($percent%)" else "🪫 TEST: REMOTE [$deviceName] LOW BATTERY ($percent%)"
+            val text = "Test Alert: Distinct sound and vibration triggered for device $deviceName at $percent%."
+
+            val notification = NotificationCompat.Builder(context, DISTINCT_LOW_BATTERY_CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setSubText("Distinct Alert Test")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setVibrate(longArrayOf(0, 400, 200, 400, 200, 400))
+                .build()
+
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(8888, notification)
+        }
 
         fun updateSubscribedStates(states: List<SubscribedDeviceState>) {
             _subscribedDeviceStates.value = states
