@@ -70,14 +70,19 @@ class NtfySubscriber {
                                                 tagsList.add(tagsArr.optString(i))
                                             }
                                         }
+                                        val msgTimeSec = jsonObj.optLong("time", 0)
+                                        val msgTimestamp = if (msgTimeSec > 0) msgTimeSec * 1000L else System.currentTimeMillis()
                                         val state = SubscribedDeviceState.parseFromNtfyPayload(
                                             topic = rawTopic,
                                             title = title,
                                             message = message,
-                                            tags = tagsList
+                                            tags = tagsList,
+                                            timestamp = msgTimestamp
                                         )
                                         if (state != null) {
-                                            latestState = state
+                                            if (latestState == null || state.lastUpdatedTimestamp >= latestState!!.lastUpdatedTimestamp) {
+                                                latestState = state
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) {

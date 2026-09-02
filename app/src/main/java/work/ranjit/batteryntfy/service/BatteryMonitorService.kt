@@ -45,7 +45,7 @@ class BatteryMonitorService : Service() {
     private var receiverJob: Job? = null
     private var streamJob: Job? = null
 
-    private var lastLowBatteryFired = false
+    private var lastSentLowBatteryLevel = -1
     private var lastFullBatteryFired = false
     private var lastRefreshResponseTime = 0L
 
@@ -161,25 +161,25 @@ class BatteryMonitorService : Service() {
 
         val config = prefsRepo.getConfig()
 
-        // Check Low Battery Alert Trigger for Local Device
+        // Continuous Low Battery Alert Trigger: Broadcasts every drop below threshold (e.g. 20% -> 19% -> 18%)
         if (config.notifyOnLowBattery && percent <= config.lowBatteryThreshold) {
-            if (!lastLowBatteryFired && !isCharging) {
-                lastLowBatteryFired = true
+            if (!isCharging && percent != lastSentLowBatteryLevel) {
+                lastSentLowBatteryLevel = percent
                 postDistinctLowBatteryNotification(
                     deviceName = config.deviceName,
                     batteryPercent = percent,
                     isCharging = isCharging,
                     pluggedType = pluggedType,
                     isLocalDevice = true,
-                    triggerEvent = "Local Battery Warning"
+                    triggerEvent = "Local Battery Warning ($percent%)"
                 )
-                sendNtfyNotification("Low Battery Alert", newInfo, priority = 5, tags = listOf("warning", "battery", "zap"))
+                sendNtfyNotification("Low Battery Alert ($percent%)", newInfo, priority = 5, tags = listOf("warning", "battery", "zap"))
             }
-        } else if (percent > config.lowBatteryThreshold + 3) {
-            lastLowBatteryFired = false
+        } else if (percent > config.lowBatteryThreshold + 2 || isCharging) {
+            lastSentLowBatteryLevel = -1
         }
 
-        // Check Full Battery Alert Trigger
+        // Full Battery Alert Trigger
         if (config.notifyOnFullBattery && percent >= config.fullBatteryThreshold) {
             if (!lastFullBatteryFired && isCharging) {
                 lastFullBatteryFired = true
@@ -293,13 +293,33 @@ class BatteryMonitorService : Service() {
 
     private fun handleIncomingRefreshRequest(topic: String) {
         val now = System.currentTimeMillis()
-        if (now - lastRefreshResponseTime < 3000L) return
+        if (now - lastRefreshResponseTime < 2000L) return
         lastRefreshResponseTime = now
+
+        // Get exact live battery info directly from system OS
+        val batteryStatusIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val liveInfo = if (batteryStatusIntent != null) {
+            val level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            val percent = if (level >= 0 && scale > 0) (level * 100 / scale) else _currentBatteryInfo.value.levelPercent
+            val status = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+            val plugged = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
+            val pluggedType = BatteryInfo.parsePluggedType(plugged)
+            _currentBatteryInfo.value.copy(
+                levelPercent = percent,
+                isCharging = isCharging,
+                pluggedType = pluggedType
+            )
+        } else {
+            _currentBatteryInfo.value
+        }
+        _currentBatteryInfo.value = liveInfo
 
         val config = prefsRepo.getConfig()
         sendNtfyNotification(
-            eventType = "On-Demand Refresh",
-            batteryInfo = _currentBatteryInfo.value,
+            eventType = "On-Demand Refresh (${liveInfo.levelPercent}%)",
+            batteryInfo = liveInfo,
             priority = config.defaultPriority,
             tags = listOf("battery", "refresh_response")
         )

@@ -74,7 +74,8 @@ data class SubscribedDeviceState(
             topic: String,
             title: String,
             message: String,
-            tags: List<String> = emptyList()
+            tags: List<String> = emptyList(),
+            timestamp: Long = System.currentTimeMillis()
         ): SubscribedDeviceState? {
             if (isRefreshRequest(title, message, tags)) {
                 return null
@@ -99,20 +100,21 @@ data class SubscribedDeviceState(
                     }
                     deviceName = jsonObj.optString("device", jsonObj.optString("deviceName", deviceName))
                     val bodyText = jsonObj.optString("body", jsonObj.optString("text", message))
-                    return parseFromTextAndHeaders(topic, title.ifBlank { jsonObj.optString("title") }, bodyText, deviceName)
+                    return parseFromTextAndHeaders(topic, title.ifBlank { jsonObj.optString("title") }, bodyText, deviceName, timestamp)
                 } catch (e: Exception) {
                     // Fallback to text parsing
                 }
             }
 
-            return parseFromTextAndHeaders(topic, title, message, deviceName)
+            return parseFromTextAndHeaders(topic, title, message, deviceName, timestamp)
         }
 
         private fun parseFromTextAndHeaders(
             topic: String,
             title: String,
             message: String,
-            defaultDeviceName: String
+            defaultDeviceName: String,
+            timestamp: Long
         ): SubscribedDeviceState? {
             var deviceName = defaultDeviceName
             var batteryPercent = -1
@@ -197,7 +199,7 @@ data class SubscribedDeviceState(
                 temperatureCelsius = temperatureCelsius,
                 voltageVolts = voltageVolts,
                 triggerEvent = triggerEvent,
-                lastUpdatedTimestamp = System.currentTimeMillis(),
+                lastUpdatedTimestamp = timestamp,
                 rawTitle = title,
                 rawMessage = message
             )
