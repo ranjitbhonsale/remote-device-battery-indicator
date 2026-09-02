@@ -319,7 +319,127 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
             }
         }
 
-        // Section 3: Sender Mode & Device Nickname Card
+        // Section 3: Charging Status & Power Notifications Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.ElectricBolt, contentDescription = null, tint = Color(0xFF10B981))
+                    Text(
+                        text = "Charging Status & Power Events",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Text(
+                    text = "Broadcasts charger plug/unplug events and continuous battery charging progress updates to your ntfy topic.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Charger Connected / Disconnected Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Send Charger Connected / Disconnected", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Publishes status as soon as charger cable is plugged in or disconnected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = config.notifyOnPowerEvents,
+                        onCheckedChange = { viewModel.updateConfig(config.copy(notifyOnPowerEvents = it)) }
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                // Full Battery Alert Toggle & Threshold
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Full Battery Alert (${config.fullBatteryThreshold}%)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Publishes alert when device finishes charging", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = config.notifyOnFullBattery,
+                        onCheckedChange = { viewModel.updateConfig(config.copy(notifyOnFullBattery = it)) }
+                    )
+                }
+
+                if (config.notifyOnFullBattery) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(80, 85, 90, 95, 100).forEach { thresholdVal ->
+                            val isSelected = config.fullBatteryThreshold == thresholdVal
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateConfig(config.copy(fullBatteryThreshold = thresholdVal)) },
+                                label = {
+                                    Text("$thresholdVal%", fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                // Continuous Charging Progress Toggle & Step Selector
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Continuous Charging Progress Step", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Publishes live battery progress at preset step increments while plugged into charger", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = config.notifyOnChargingProgress,
+                        onCheckedChange = { viewModel.updateConfig(config.copy(notifyOnChargingProgress = it)) }
+                    )
+                }
+
+                if (config.notifyOnChargingProgress) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(5 to "Every 5%", 10 to "Every 10%", 15 to "Every 15%", 20 to "Every 20%").forEach { (stepVal, stepLabel) ->
+                            val isSelected = config.chargingProgressStepPercent == stepVal
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateConfig(config.copy(chargingProgressStepPercent = stepVal)) },
+                                label = {
+                                    Text(stepLabel, fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 4: Sender Mode & Device Nickname Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),

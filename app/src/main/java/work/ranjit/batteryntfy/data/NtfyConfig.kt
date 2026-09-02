@@ -13,6 +13,8 @@ data class NtfyConfig(
     val lowBatteryThreshold: Int = 15,
     val notifyOnFullBattery: Boolean = true,
     val fullBatteryThreshold: Int = 90,
+    val notifyOnChargingProgress: Boolean = true,
+    val chargingProgressStepPercent: Int = 10, // Broadcasts every 5%, 10%, 15%, 20% while charging
     val periodicIntervalMinutes: Int = 30, // 0 = disabled, 15, 30, 60, 120, etc.
     val autoStartOnBoot: Boolean = true,
     val onlySendWhenBelowLevelEnabled: Boolean = false,

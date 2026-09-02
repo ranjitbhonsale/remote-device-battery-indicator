@@ -46,6 +46,7 @@ class BatteryMonitorService : Service() {
     private var streamJob: Job? = null
 
     private var lastSentLowBatteryLevel = -1
+    private var lastSentChargingPercent = -1
     private var lastFullBatteryFired = false
     private var lastRefreshResponseTime = 0L
 
@@ -188,14 +189,41 @@ class BatteryMonitorService : Service() {
         } else if (percent < config.fullBatteryThreshold - 3) {
             lastFullBatteryFired = false
         }
+
+        // Continuous Charging Progress Alert Trigger
+        if (config.notifyOnChargingProgress && isCharging) {
+            val step = config.chargingProgressStepPercent
+            if (step > 0 && percent % step == 0 && percent != lastSentChargingPercent) {
+                lastSentChargingPercent = percent
+                sendNtfyNotification("Charging Progress ($percent%)", newInfo, priority = 3, tags = listOf("electric_plug", "battery", "zap"))
+            }
+        } else if (!isCharging) {
+            lastSentChargingPercent = -1
+        }
     }
 
     private fun handlePowerEvent(pluggedIn: Boolean) {
         val config = prefsRepo.getConfig()
+        val info = _currentBatteryInfo.value
         if (config.notifyOnPowerEvents) {
-            val eventName = if (pluggedIn) "Charger Connected" else "Charger Disconnected"
-            val tags = if (pluggedIn) listOf("electric_plug", "battery") else listOf("unplugged", "battery")
-            sendNtfyNotification(eventName, _currentBatteryInfo.value, priority = 3, tags = tags)
+            val batteryStatusIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val freshInfo = if (batteryStatusIntent != null) {
+                val level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                val percent = if (level >= 0 && scale > 0) (level * 100 / scale) else info.levelPercent
+                val status = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+                val plugged = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
+                val pluggedType = BatteryInfo.parsePluggedType(plugged)
+                info.copy(levelPercent = percent, isCharging = isCharging, pluggedType = pluggedType)
+            } else {
+                info.copy(isCharging = pluggedIn)
+            }
+            _currentBatteryInfo.value = freshInfo
+
+            val eventName = if (pluggedIn) "Charger Connected (${freshInfo.pluggedType})" else "Charger Disconnected"
+            val tags = if (pluggedIn) listOf("electric_plug", "battery", "bolt") else listOf("unplugged", "battery")
+            sendNtfyNotification(eventName, freshInfo, priority = 3, tags = tags)
         }
     }
 
@@ -422,7 +450,7 @@ class BatteryMonitorService : Service() {
             try {
                 val config = prefsRepo.getConfig()
 
-                val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Manual") || eventType.contains("Test") || eventType.contains("Refresh")
+                val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Charger") || eventType.contains("Charging") || eventType.contains("Manual") || eventType.contains("Test") || eventType.contains("Refresh")
                 if (!isCriticalOrManual && config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
                     val skippedLog = work.ranjit.batteryntfy.data.NotificationLog(
                         eventType = "$eventType (Filtered)",
