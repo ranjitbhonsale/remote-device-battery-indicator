@@ -539,9 +539,9 @@ fun RemoteDeviceCard(
     val level = deviceState.batteryPercent.coerceIn(0, 100)
     val cardColor = when {
         deviceState.isCharging -> Color(0xFF10B981) // Green
-        level <= 15 -> Color(0xFFEF4444) // Red
-        level <= 30 -> Color(0xFFF59E0B) // Amber
-        else -> Color(0xFF10B981)
+        level < 20 -> Color(0xFFEF4444) // Red when below 20%
+        level < 40 -> Color(0xFFF59E0B) // Amber when below 40%
+        else -> Color(0xFF10B981) // Green when 40% and above
     }
 
     val timeFormatted = remember(deviceState.lastUpdatedTimestamp) {
@@ -719,9 +719,9 @@ fun BatteryGaugeCard(batteryInfo: BatteryInfo) {
     val gaugeColor by animateColorAsState(
         targetValue = when {
             batteryInfo.isCharging -> Color(0xFF10B981) // Emerald Green
-            level <= 15 -> Color(0xFFEF4444) // Red
-            level <= 30 -> Color(0xFFF59E0B) // Amber
-            else -> Color(0xFF10B981) // Green
+            level < 20 -> Color(0xFFEF4444) // Red when below 20%
+            level < 40 -> Color(0xFFF59E0B) // Amber when below 40%
+            else -> Color(0xFF10B981) // Green when 40% and above
         },
         animationSpec = tween(durationMillis = 500),
         label = "GaugeColor"
