@@ -1,5 +1,6 @@
 package work.ranjit.batteryntfy.service
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -65,7 +66,6 @@ class BatteryMonitorService : Service() {
         createNotificationChannels()
         registerBatteryReceiver()
         _isServiceRunning.value = true
-        prefsRepo.setServiceEnabled(true)
         loadSubscribedDeviceStates()
     }
 
@@ -92,7 +92,34 @@ class BatteryMonitorService : Service() {
 
         restartPeriodicTimer()
         restartReceiverLoop()
+        AlarmReceiver.scheduleNextWatchdog(this)
         return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // If app task is swiped away from recent apps, schedule immediate auto-restart of foreground service
+        if (prefsRepo.isServiceEnabled()) {
+            try {
+                val restartServiceIntent = Intent(applicationContext, BatteryMonitorService::class.java).apply {
+                    setPackage(packageName)
+                }
+                val restartServicePendingIntent = PendingIntent.getService(
+                    applicationContext,
+                    1,
+                    restartServiceIntent,
+                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1000,
+                    restartServicePendingIntent
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -102,7 +129,7 @@ class BatteryMonitorService : Service() {
         receiverJob?.cancel()
         streamJob?.cancel()
         _isServiceRunning.value = false
-        prefsRepo.setServiceEnabled(false)
+        // DO NOT set prefsRepo.setServiceEnabled(false) on system kill!
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -450,7 +477,7 @@ class BatteryMonitorService : Service() {
             try {
                 val config = prefsRepo.getConfig()
 
-                val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Charger") || eventType.contains("Charging") || eventType.contains("Manual") || eventType.contains("Test") || eventType.contains("Refresh")
+                val isCriticalOrManual = eventType.contains("Low Battery") || eventType.contains("Full Battery") || eventType.contains("Charger") || eventType.contains("Charging") || eventType.contains("Manual") || eventType.contains("Test") || eventType.contains("Refresh") || eventType.contains("Watchdog")
                 if (!isCriticalOrManual && config.onlySendWhenBelowLevelEnabled && batteryInfo.levelPercent > config.onlySendBelowLevelThreshold) {
                     val skippedLog = work.ranjit.batteryntfy.data.NotificationLog(
                         eventType = "$eventType (Filtered)",
@@ -538,7 +565,7 @@ class BatteryMonitorService : Service() {
         val statusText = if (info.levelPercent > 0) {
             "${info.levelPercent}% - ${if (info.isCharging) "Charging (${info.pluggedType})" else "Discharging"}"
         } else {
-            "Monitoring battery state..."
+            "Monitoring battery state 24/7..."
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -608,12 +635,14 @@ class BatteryMonitorService : Service() {
 
         fun start(context: Context) {
             try {
+                PreferencesRepository(context).setServiceEnabled(true)
                 val intent = Intent(context, BatteryMonitorService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)
                 }
+                AlarmReceiver.scheduleNextWatchdog(context)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -621,6 +650,8 @@ class BatteryMonitorService : Service() {
 
         fun stop(context: Context) {
             try {
+                PreferencesRepository(context).setServiceEnabled(false)
+                AlarmReceiver.cancelWatchdog(context)
                 val intent = Intent(context, BatteryMonitorService::class.java)
                 context.stopService(intent)
             } catch (e: Exception) {
