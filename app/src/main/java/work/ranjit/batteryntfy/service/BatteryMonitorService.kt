@@ -135,8 +135,13 @@ class BatteryMonitorService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun loadSubscribedDeviceStates() {
-        val savedStates = prefsRepo.getSubscribedDeviceStates()
+        val config = prefsRepo.getConfig()
+        val savedStates = prefsRepo.getSubscribedDeviceStates().filter { savedState ->
+            !savedState.topic.equals(config.topic, ignoreCase = true) &&
+                    config.subscribedTopics.any { it.equals(savedState.topic, ignoreCase = true) }
+        }
         _subscribedDeviceStates.value = savedStates
+        prefsRepo.saveSubscribedDeviceStates(savedStates)
     }
 
     private fun registerBatteryReceiver() {
@@ -381,6 +386,17 @@ class BatteryMonitorService : Service() {
     }
 
     private fun handleRemoteDeviceStateReceived(state: SubscribedDeviceState, config: NtfyConfig) {
+        // 1. Ignore if state is from the local device's own publish topic
+        if (state.topic.equals(config.topic, ignoreCase = true)) {
+            return
+        }
+
+        // 2. Ignore if topic is not explicitly in config.subscribedTopics (e.g. user deleted it)
+        val isSubscribed = config.subscribedTopics.any { it.equals(state.topic, ignoreCase = true) }
+        if (!isSubscribed) {
+            return
+        }
+
         val currentStates = _subscribedDeviceStates.value.toMutableList()
         val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) || it.deviceName.equals(state.deviceName, ignoreCase = true) }
         val oldState = if (existingIndex >= 0) currentStates[existingIndex] else null

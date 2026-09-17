@@ -110,7 +110,8 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         updateConfig(updatedConfig)
 
         prefsRepo.removeSubscribedDeviceState(topicToRemove)
-        val remainingStates = prefsRepo.getSubscribedDeviceStates()
+        val remainingStates = prefsRepo.getSubscribedDeviceStates().filterNot { it.topic.equals(topicToRemove, ignoreCase = true) }
+        prefsRepo.saveSubscribedDeviceStates(remainingStates)
         BatteryMonitorService.updateSubscribedStates(remainingStates)
     }
 
