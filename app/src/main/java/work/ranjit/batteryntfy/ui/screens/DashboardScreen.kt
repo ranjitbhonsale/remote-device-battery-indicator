@@ -173,6 +173,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 subscribedDeviceStates.forEach { remoteDevice ->
                     RemoteDeviceCard(
                         deviceState = remoteDevice,
+                        lowBatteryThreshold = config.remoteLowBatteryThreshold,
                         isRefreshing = refreshingDevices.contains(remoteDevice.topic),
                         onRefresh = { viewModel.requestDeviceRefresh(remoteDevice.topic) },
                         onDelete = { viewModel.removeSubscribedTopic(remoteDevice.topic) }
@@ -207,7 +208,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
         }
 
         // Battery Arc Gauge Header Card
-        BatteryGaugeCard(batteryInfo = batteryInfo)
+        BatteryGaugeCard(batteryInfo = batteryInfo, lowBatteryThreshold = config.lowBatteryThreshold)
 
         // Background Monitoring Service Toggle Card
         Card(
@@ -532,15 +533,15 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 @Composable
 fun RemoteDeviceCard(
     deviceState: SubscribedDeviceState,
+    lowBatteryThreshold: Int = 20,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit,
     onDelete: () -> Unit
 ) {
     val level = deviceState.batteryPercent.coerceIn(0, 100)
     val cardColor = when {
-        deviceState.isCharging -> Color(0xFF10B981) // Green
-        level < 20 -> Color(0xFFEF4444) // Red when below 20%
-        level < 40 -> Color(0xFFF59E0B) // Amber when below 40%
+        level <= lowBatteryThreshold || level < 20 -> Color(0xFFEF4444) // Red when at/below low battery threshold or <20%
+        level < 40 -> Color(0xFFF59E0B) // Amber when below 40% (20% - 39%)
         else -> Color(0xFF10B981) // Green when 40% and above
     }
 
@@ -708,7 +709,7 @@ fun RemoteDeviceCard(
 }
 
 @Composable
-fun BatteryGaugeCard(batteryInfo: BatteryInfo) {
+fun BatteryGaugeCard(batteryInfo: BatteryInfo, lowBatteryThreshold: Int = 20) {
     val level = batteryInfo.levelPercent.coerceIn(0, 100)
     val animatedProgress by animateFloatAsState(
         targetValue = level / 100f,
@@ -718,9 +719,8 @@ fun BatteryGaugeCard(batteryInfo: BatteryInfo) {
 
     val gaugeColor by animateColorAsState(
         targetValue = when {
-            batteryInfo.isCharging -> Color(0xFF10B981) // Emerald Green
-            level < 20 -> Color(0xFFEF4444) // Red when below 20%
-            level < 40 -> Color(0xFFF59E0B) // Amber when below 40%
+            level <= lowBatteryThreshold || level < 20 -> Color(0xFFEF4444) // Red when at/below low battery threshold or <20%
+            level < 40 -> Color(0xFFF59E0B) // Amber when below 40% (20% - 39%)
             else -> Color(0xFF10B981) // Green when 40% and above
         },
         animationSpec = tween(durationMillis = 500),
