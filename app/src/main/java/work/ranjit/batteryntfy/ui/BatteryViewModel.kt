@@ -115,6 +115,43 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         BatteryMonitorService.updateSubscribedStates(remainingStates)
     }
 
+    fun updateDeviceCustomThreshold(topic: String, newThreshold: Int) {
+        val cleanTopic = topic.trim()
+        val states = prefsRepo.getSubscribedDeviceStates().toMutableList()
+        val index = states.indexOfFirst { it.topic.equals(cleanTopic, ignoreCase = true) }
+        if (index >= 0) {
+            val updated = states[index].copy(customLowBatteryThreshold = newThreshold.coerceIn(1, 99))
+            states[index] = updated
+            prefsRepo.saveSubscribedDeviceStates(states)
+            BatteryMonitorService.updateSubscribedStates(states)
+        }
+    }
+
+    fun snoozeDeviceAlert(topic: String, durationMs: Long) {
+        val cleanTopic = topic.trim()
+        val states = prefsRepo.getSubscribedDeviceStates().toMutableList()
+        val index = states.indexOfFirst { it.topic.equals(cleanTopic, ignoreCase = true) }
+        if (index >= 0) {
+            val snoozeUntil = if (durationMs > 0) System.currentTimeMillis() + durationMs else 0L
+            val updated = states[index].copy(snoozedUntilTimestamp = snoozeUntil)
+            states[index] = updated
+            prefsRepo.saveSubscribedDeviceStates(states)
+            BatteryMonitorService.updateSubscribedStates(states)
+        }
+    }
+
+    fun toggleDeviceAlertEnabled(topic: String, isEnabled: Boolean) {
+        val cleanTopic = topic.trim()
+        val states = prefsRepo.getSubscribedDeviceStates().toMutableList()
+        val index = states.indexOfFirst { it.topic.equals(cleanTopic, ignoreCase = true) }
+        if (index >= 0) {
+            val updated = states[index].copy(isAlertEnabled = isEnabled)
+            states[index] = updated
+            prefsRepo.saveSubscribedDeviceStates(states)
+            BatteryMonitorService.updateSubscribedStates(states)
+        }
+    }
+
     /**
      * Sends an on-demand refresh message to a specific remote device and polls for the response
      */

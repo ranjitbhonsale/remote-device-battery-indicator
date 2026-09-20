@@ -198,14 +198,6 @@ class BatteryMonitorService : Service() {
         if (config.notifyOnLowBattery && percent <= config.lowBatteryThreshold) {
             if (!isCharging && percent != lastSentLowBatteryLevel) {
                 lastSentLowBatteryLevel = percent
-                postDistinctLowBatteryNotification(
-                    deviceName = config.deviceName,
-                    batteryPercent = percent,
-                    isCharging = isCharging,
-                    pluggedType = pluggedType,
-                    isLocalDevice = true,
-                    triggerEvent = "Local Battery Warning ($percent%)"
-                )
                 sendNtfyNotification("Low Battery Alert ($percent%)", newInfo, priority = 5, tags = listOf("warning", "battery", "zap"))
             }
         } else if (percent > config.lowBatteryThreshold + 2 || isCharging) {
@@ -336,6 +328,9 @@ class BatteryMonitorService : Service() {
                     for (subTopic in currentConfig.subscribedTopics) {
                         if (!isActive) break
                         try {
+                            // Auto-refresh: request remote device telemetry before evaluating alerts
+                            ntfyPublisher.publishRefreshRequest(currentConfig, subTopic)
+                            delay(1500L)
                             val state = ntfySubscriber.fetchLatestDeviceState(currentConfig, subTopic)
                             if (state != null) {
                                 handleRemoteDeviceStateReceived(state, currentConfig)
@@ -401,43 +396,48 @@ class BatteryMonitorService : Service() {
         val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) || it.deviceName.equals(state.deviceName, ignoreCase = true) }
         val oldState = if (existingIndex >= 0) currentStates[existingIndex] else null
 
-        if (existingIndex >= 0) {
-            currentStates[existingIndex] = state
+        // Preserve local per-device settings (customLowBatteryThreshold, snoozedUntilTimestamp, isAlertEnabled)
+        val mergedState = if (oldState != null) {
+            state.copy(
+                customLowBatteryThreshold = oldState.customLowBatteryThreshold,
+                snoozedUntilTimestamp = oldState.snoozedUntilTimestamp,
+                isAlertEnabled = oldState.isAlertEnabled
+            )
         } else {
-            currentStates.add(0, state)
+            state
+        }
+
+        if (existingIndex >= 0) {
+            currentStates[existingIndex] = mergedState
+        } else {
+            currentStates.add(0, mergedState)
         }
         _subscribedDeviceStates.value = currentStates
         prefsRepo.saveSubscribedDeviceStates(currentStates)
 
-        // Post Local Android System Notification if remote battery level drops below preset threshold
-        if (config.notifyOnRemoteLowBattery) {
-            val isLow = state.batteryPercent in 1..config.remoteLowBatteryThreshold
-            val stateChanged = oldState == null || oldState.batteryPercent != state.batteryPercent || oldState.isCharging != state.isCharging
-            if (isLow && stateChanged && !state.isCharging) {
-                postDistinctLowBatteryNotification(
-                    deviceName = state.deviceName,
-                    batteryPercent = state.batteryPercent,
-                    isCharging = state.isCharging,
-                    pluggedType = state.pluggedType,
-                    isLocalDevice = false,
-                    triggerEvent = state.triggerEvent
-                )
+        // Post Local Android System Notification if remote battery level drops to or below per-device custom threshold
+        if (config.notifyOnRemoteLowBattery && mergedState.isAlertEnabled && !mergedState.isSnoozed()) {
+            val threshold = mergedState.customLowBatteryThreshold
+            val isLow = mergedState.batteryPercent in 1..threshold
+            val stateChanged = oldState == null || oldState.batteryPercent != mergedState.batteryPercent || oldState.isCharging != mergedState.isCharging || mergedState.triggerEvent.contains("Low Battery", ignoreCase = true)
+            if (isLow && stateChanged && !mergedState.isCharging) {
+                postDistinctLowBatteryNotification(mergedState)
             }
         }
     }
 
-    private fun postDistinctLowBatteryNotification(
-        deviceName: String,
-        batteryPercent: Int,
-        isCharging: Boolean,
-        pluggedType: String,
-        isLocalDevice: Boolean,
-        triggerEvent: String
-    ) {
+    private fun postDistinctLowBatteryNotification(deviceState: SubscribedDeviceState) {
+        val topic = deviceState.topic
+        val deviceName = deviceState.deviceName
+        val batteryPercent = deviceState.batteryPercent
+        val isCharging = deviceState.isCharging
+        val pluggedType = deviceState.pluggedType
+        val triggerEvent = deviceState.triggerEvent
+
         val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        val notificationId = if (isLocalDevice) 9999 else deviceName.hashCode()
+        val notificationId = topic.hashCode()
         val pendingIntent = PendingIntent.getActivity(
             this,
             notificationId,
@@ -445,30 +445,65 @@ class BatteryMonitorService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val chargingText = if (isCharging) "Charging ($pluggedType)" else "Discharging"
-        val title = if (isLocalDevice) {
-            "🚨 THIS DEVICE LOW BATTERY: $batteryPercent%"
-        } else {
-            "🪫 REMOTE LOW BATTERY: [$deviceName] is at $batteryPercent%"
+        // PendingIntents for Notification Action Buttons (Snooze 30m, Snooze 1h, Dismiss)
+        val snooze30Intent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_SNOOZE_ALERT
+            putExtra(NotificationActionReceiver.EXTRA_TOPIC, topic)
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+            putExtra(NotificationActionReceiver.EXTRA_SNOOZE_DURATION_MS, 30 * 60 * 1000L)
         }
+        val snooze30PendingIntent = PendingIntent.getBroadcast(
+            this,
+            notificationId * 31 + 1,
+            snooze30Intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
-        val text = if (isLocalDevice) {
-            "This device ($deviceName) is $chargingText. Battery level has dropped to $batteryPercent%. Please plug in charger."
-        } else {
-            "Remote device ($deviceName) is $chargingText. Battery level has dropped to $batteryPercent% ($triggerEvent)."
+        val snooze60Intent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_SNOOZE_ALERT
+            putExtra(NotificationActionReceiver.EXTRA_TOPIC, topic)
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+            putExtra(NotificationActionReceiver.EXTRA_SNOOZE_DURATION_MS, 60 * 60 * 1000L)
         }
+        val snooze60PendingIntent = PendingIntent.getBroadcast(
+            this,
+            notificationId * 31 + 2,
+            snooze60Intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val dismissIntent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_DISMISS_ALERT
+            putExtra(NotificationActionReceiver.EXTRA_TOPIC, topic)
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        val dismissPendingIntent = PendingIntent.getBroadcast(
+            this,
+            notificationId * 31 + 3,
+            dismissIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val chargingText = if (isCharging) "Charging ($pluggedType)" else "Discharging"
+        val title = "🪫 REMOTE LOW BATTERY: [$deviceName] is at $batteryPercent%"
+        val text = "Remote device ($deviceName) is $chargingText. Battery level has dropped to $batteryPercent% ($triggerEvent)."
 
         val notification = NotificationCompat.Builder(this, DISTINCT_LOW_BATTERY_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
-            .setSubText(if (isLocalDevice) "Local Battery Alert" else "Remote Battery Alert")
+            .setSubText("Remote Battery Alert")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
+            .setFullScreenIntent(pendingIntent, true) // Displays full-screen alert overlay on lock screen
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 100% visible on lock screen
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVibrate(longArrayOf(0, 400, 200, 400, 200, 400))
+            .addAction(0, "💤 Snooze 30m", snooze30PendingIntent)
+            .addAction(0, "💤 Snooze 1h", snooze60PendingIntent)
+            .addAction(0, "Dismiss", dismissPendingIntent)
             .build()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

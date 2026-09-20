@@ -173,10 +173,12 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 subscribedDeviceStates.forEach { remoteDevice ->
                     RemoteDeviceCard(
                         deviceState = remoteDevice,
-                        lowBatteryThreshold = config.remoteLowBatteryThreshold,
                         isRefreshing = refreshingDevices.contains(remoteDevice.topic),
                         onRefresh = { viewModel.requestDeviceRefresh(remoteDevice.topic) },
-                        onDelete = { viewModel.removeSubscribedTopic(remoteDevice.topic) }
+                        onDelete = { viewModel.removeSubscribedTopic(remoteDevice.topic) },
+                        onThresholdChange = { newThreshold -> viewModel.updateDeviceCustomThreshold(remoteDevice.topic, newThreshold) },
+                        onToggleAlert = { isEnabled -> viewModel.toggleDeviceAlertEnabled(remoteDevice.topic, isEnabled) },
+                        onSnooze = { durationMs -> viewModel.snoozeDeviceAlert(remoteDevice.topic, durationMs) }
                     )
                 }
             }
@@ -533,21 +535,33 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 @Composable
 fun RemoteDeviceCard(
     deviceState: SubscribedDeviceState,
-    lowBatteryThreshold: Int = 20,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onThresholdChange: (Int) -> Unit,
+    onToggleAlert: (Boolean) -> Unit,
+    onSnooze: (Long) -> Unit
 ) {
     val level = deviceState.batteryPercent.coerceIn(0, 100)
+    val threshold = deviceState.customLowBatteryThreshold
+    val isSnoozed = deviceState.isSnoozed()
+
     val cardColor = when {
-        level <= lowBatteryThreshold || level < 20 -> Color(0xFFEF4444) // Red when at/below low battery threshold or <20%
-        level < 40 -> Color(0xFFF59E0B) // Amber when below 40% (20% - 39%)
-        else -> Color(0xFF10B981) // Green when 40% and above
+        level <= threshold -> Color(0xFFEF4444) // Red when at or below custom low battery threshold
+        level < threshold + 15 -> Color(0xFFF59E0B) // Amber when close to threshold
+        else -> Color(0xFF10B981) // Green when normal
     }
 
     val timeFormatted = remember(deviceState.lastUpdatedTimestamp) {
         val sdf = SimpleDateFormat("hh:mm a • MMM dd", Locale.getDefault())
         sdf.format(Date(deviceState.lastUpdatedTimestamp))
+    }
+
+    val snoozedTimeFormatted = remember(deviceState.snoozedUntilTimestamp) {
+        if (deviceState.snoozedUntilTimestamp > 0) {
+            val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+            sdf.format(Date(deviceState.snoozedUntilTimestamp))
+        } else ""
     }
 
     Card(
@@ -562,6 +576,7 @@ fun RemoteDeviceCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Header Row: Device Icon, Name, Topic & Actions (Refresh, Alert Toggle, Delete)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -601,6 +616,19 @@ fun RemoteDeviceCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    // Alert Enable/Disable Switch
+                    IconButton(
+                        onClick = { onToggleAlert(!deviceState.isAlertEnabled) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (deviceState.isAlertEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                            contentDescription = "Toggle Alert Notifications",
+                            tint = if (deviceState.isAlertEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     // On-Demand Refresh Button
                     IconButton(
                         onClick = onRefresh,
@@ -659,7 +687,7 @@ fun RemoteDeviceCard(
                 )
             }
 
-            // Stats Sub-row
+            // Stats Sub-row (Status, Temperature, Last Updated)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -703,6 +731,128 @@ fun RemoteDeviceCard(
                     color = if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (isRefreshing) FontWeight.Bold else FontWeight.Normal
                 )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            // Per-Device Custom Low Battery Alert Controls & Snooze Row
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.NotificationsActive,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Low Battery Target Alert:",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    // Stepper (- / +) for 1% - 99% threshold selector
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(
+                            onClick = { if (threshold > 1) onThresholdChange(threshold - 5) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Text("-", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                text = "$threshold%",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { if (threshold < 99) onThresholdChange(threshold + 5) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Text("+", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                    }
+                }
+
+                // Snooze Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isSnoozed) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    text = "💤 Snoozed until $snoozedTimeFormatted",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            TextButton(
+                                onClick = { onSnooze(0L) },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Un-snooze", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = if (deviceState.isAlertEnabled) "Alerts Active" else "Alerts Muted",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (deviceState.isAlertEnabled) Color(0xFF10B981) else MaterialTheme.colorScheme.outline
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = { onSnooze(30 * 60 * 1000L) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("💤 30m", fontSize = 11.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = { onSnooze(60 * 60 * 1000L) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("💤 1h", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

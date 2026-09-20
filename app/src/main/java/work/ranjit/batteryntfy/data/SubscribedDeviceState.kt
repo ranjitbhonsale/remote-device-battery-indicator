@@ -13,9 +13,16 @@ data class SubscribedDeviceState(
     val voltageVolts: Float = 0f,
     val triggerEvent: String = "Status Update",
     val lastUpdatedTimestamp: Long = System.currentTimeMillis(),
+    val customLowBatteryThreshold: Int = 20, // Customizable low battery threshold per remote device (1% - 99%)
+    val snoozedUntilTimestamp: Long = 0L, // Timestamp until which low battery alerts for this device are snoozed
+    val isAlertEnabled: Boolean = true, // Toggle alert notifications for this specific device
     val rawTitle: String = "",
     val rawMessage: String = ""
 ) {
+    fun isSnoozed(): Boolean {
+        return System.currentTimeMillis() < snoozedUntilTimestamp
+    }
+
     fun toJson(): JSONObject {
         return JSONObject().apply {
             put("topic", topic)
@@ -28,6 +35,9 @@ data class SubscribedDeviceState(
             put("voltageVolts", voltageVolts.toDouble())
             put("triggerEvent", triggerEvent)
             put("lastUpdatedTimestamp", lastUpdatedTimestamp)
+            put("customLowBatteryThreshold", customLowBatteryThreshold)
+            put("snoozedUntilTimestamp", snoozedUntilTimestamp)
+            put("isAlertEnabled", isAlertEnabled)
             put("rawTitle", rawTitle)
             put("rawMessage", rawMessage)
         }
@@ -46,6 +56,9 @@ data class SubscribedDeviceState(
                 voltageVolts = json.optDouble("voltageVolts", 0.0).toFloat(),
                 triggerEvent = json.optString("triggerEvent", "Status Update"),
                 lastUpdatedTimestamp = json.optLong("lastUpdatedTimestamp", System.currentTimeMillis()),
+                customLowBatteryThreshold = json.optInt("customLowBatteryThreshold", 20),
+                snoozedUntilTimestamp = json.optLong("snoozedUntilTimestamp", 0L),
+                isAlertEnabled = json.optBoolean("isAlertEnabled", true),
                 rawTitle = json.optString("rawTitle", ""),
                 rawMessage = json.optString("rawMessage", "")
             )
