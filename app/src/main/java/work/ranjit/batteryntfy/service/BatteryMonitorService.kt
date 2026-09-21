@@ -50,6 +50,7 @@ class BatteryMonitorService : Service() {
     private var lastSentChargingPercent = -1
     private var lastFullBatteryFired = false
     private var lastRefreshResponseTime = 0L
+    private val lastNotifiedRemoteLowBatteryLevel = mutableMapOf<String, Int>()
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -418,10 +419,15 @@ class BatteryMonitorService : Service() {
         // Post Local Android System Notification if remote battery level drops to or below per-device custom threshold
         if (config.notifyOnRemoteLowBattery && mergedState.isAlertEnabled && !mergedState.isSnoozed()) {
             val threshold = mergedState.customLowBatteryThreshold
-            val isLow = mergedState.batteryPercent in 1..threshold
-            val stateChanged = oldState == null || oldState.batteryPercent != mergedState.batteryPercent || oldState.isCharging != mergedState.isCharging || mergedState.triggerEvent.contains("Low Battery", ignoreCase = true)
-            if (isLow && stateChanged && !mergedState.isCharging) {
-                postDistinctLowBatteryNotification(mergedState)
+            val percent = mergedState.batteryPercent
+            if (percent in 1..threshold) {
+                val lastNotified = lastNotifiedRemoteLowBatteryLevel[mergedState.topic] ?: -1
+                if (lastNotified != percent) {
+                    lastNotifiedRemoteLowBatteryLevel[mergedState.topic] = percent
+                    postDistinctLowBatteryNotification(mergedState)
+                }
+            } else if (percent > threshold + 2) {
+                lastNotifiedRemoteLowBatteryLevel[mergedState.topic] = -1
             }
         }
     }
@@ -437,7 +443,7 @@ class BatteryMonitorService : Service() {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        val notificationId = topic.hashCode()
+        val notificationId = Math.abs(topic.hashCode()) + 2000
         val pendingIntent = PendingIntent.getActivity(
             this,
             notificationId,
@@ -488,13 +494,12 @@ class BatteryMonitorService : Service() {
         val title = "🪫 REMOTE LOW BATTERY: [$deviceName] is at $batteryPercent%"
         val text = "Remote device ($deviceName) is $chargingText. Battery level has dropped to $batteryPercent% ($triggerEvent)."
 
-        val notification = NotificationCompat.Builder(this, DISTINCT_LOW_BATTERY_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, DISTINCT_LOW_BATTERY_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSubText("Remote Battery Alert")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
-            .setFullScreenIntent(pendingIntent, true) // Displays full-screen alert overlay on lock screen
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 100% visible on lock screen
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -504,10 +509,21 @@ class BatteryMonitorService : Service() {
             .addAction(0, "💤 Snooze 30m", snooze30PendingIntent)
             .addAction(0, "💤 Snooze 1h", snooze60PendingIntent)
             .addAction(0, "Dismiss", dismissPendingIntent)
-            .build()
 
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(notificationId, notification)
+        try {
+            builder.setFullScreenIntent(pendingIntent, true)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val notification = builder.build()
+
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(notificationId, notification)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun sendNtfyNotification(
