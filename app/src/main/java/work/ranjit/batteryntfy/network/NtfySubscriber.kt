@@ -195,7 +195,15 @@ class NtfySubscriber {
     ) = withContext(Dispatchers.IO) {
         if (topics.isEmpty()) return@withContext
         val cleanServer = config.serverUrl.trim().removeSuffix("/")
-        val joinedTopics = topics.joinToString(",") { it.trim() }
+
+        // Listen to both raw topic name and work_ranjit_ prefixed topic name for max cross-app compatibility
+        val allTopicsToStream = topics.flatMap { raw ->
+            val clean = raw.trim().removePrefix("work_ranjit_")
+            if (clean.isNotBlank()) listOf(clean, "work_ranjit_$clean") else emptyList()
+        }.distinct()
+
+        if (allTopicsToStream.isEmpty()) return@withContext
+        val joinedTopics = allTopicsToStream.joinToString(",")
         val targetUrl = "$cleanServer/$joinedTopics/json"
 
         try {
@@ -225,7 +233,14 @@ class NtfySubscriber {
                             val jsonObj = JSONObject(trimmed)
                             val event = jsonObj.optString("event", "message")
                             if (event == "message") {
-                                val msgTopic = jsonObj.optString("topic", "")
+                                val msgTopicRaw = jsonObj.optString("topic", "")
+                                val msgCleanTopic = msgTopicRaw.removePrefix("work_ranjit_")
+                                val matchedTopic = if (msgCleanTopic.isNotBlank()) {
+                                    topics.find { it.equals(msgCleanTopic, ignoreCase = true) } ?: msgCleanTopic
+                                } else {
+                                    topics.first().removePrefix("work_ranjit_")
+                                }
+
                                 val title = jsonObj.optString("title", "")
                                 val message = jsonObj.optString("message", jsonObj.optString("text", ""))
                                 val tagsArr = jsonObj.optJSONArray("tags")
@@ -237,10 +252,10 @@ class NtfySubscriber {
                                 }
 
                                 if (SubscribedDeviceState.isRefreshRequest(title, message, tagsList)) {
-                                    onRefreshRequested?.invoke(msgTopic.ifBlank { topics.first() })
+                                    onRefreshRequested?.invoke(matchedTopic)
                                 } else {
                                     val state = SubscribedDeviceState.parseFromNtfyPayload(
-                                        topic = msgTopic.ifBlank { topics.first() },
+                                        topic = matchedTopic,
                                         title = title,
                                         message = message,
                                         tags = tagsList

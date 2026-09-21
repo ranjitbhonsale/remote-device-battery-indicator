@@ -195,14 +195,14 @@ class BatteryMonitorService : Service() {
 
         val config = prefsRepo.getConfig()
 
-        // Continuous Low Battery Alert Trigger: Broadcasts every drop below threshold (e.g. 20% -> 19% -> 18%)
-        if (config.notifyOnLowBattery && percent <= config.lowBatteryThreshold) {
-            if (!isCharging && percent != lastSentLowBatteryLevel) {
-                lastSentLowBatteryLevel = percent
-                sendNtfyNotification("Low Battery Alert ($percent%)", newInfo, priority = 5, tags = listOf("warning", "battery", "zap"))
-            }
-        } else if (percent > config.lowBatteryThreshold + 2 || isCharging) {
-            lastSentLowBatteryLevel = -1
+        // Telemetry Broadcast: Send status update whenever local battery percentage changes
+        if (percent > 0 && percent != lastSentLowBatteryLevel) {
+            lastSentLowBatteryLevel = percent
+            val isLow = percent <= 20
+            val eventType = if (isLow) "Low Battery Alert ($percent%)" else "Battery Status ($percent%)"
+            val priority = if (isLow) 5 else config.defaultPriority
+            val tags = if (isLow) listOf("warning", "battery", "zap") else listOf("battery")
+            sendNtfyNotification(eventType, newInfo, priority = priority, tags = tags)
         }
 
         // Full Battery Alert Trigger
