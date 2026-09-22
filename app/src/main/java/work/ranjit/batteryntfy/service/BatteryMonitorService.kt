@@ -195,14 +195,19 @@ class BatteryMonitorService : Service() {
 
         val config = prefsRepo.getConfig()
 
-        // Telemetry Broadcast: Send status update whenever local battery percentage changes
-        if (percent > 0 && percent != lastSentLowBatteryLevel) {
-            lastSentLowBatteryLevel = percent
-            val isLow = percent <= 20
-            val eventType = if (isLow) "Low Battery Alert ($percent%)" else "Battery Status ($percent%)"
-            val priority = if (isLow) 5 else config.defaultPriority
-            val tags = if (isLow) listOf("warning", "battery", "zap") else listOf("battery")
-            sendNtfyNotification(eventType, newInfo, priority = priority, tags = tags)
+        // Low Battery Warning Alert: Published to ntfy ONLY when battery drops to or below configured low battery threshold (e.g. <= 20%)
+        if (config.notifyOnLowBattery && percent in 1..config.lowBatteryThreshold) {
+            if (!isCharging && percent != lastSentLowBatteryLevel) {
+                lastSentLowBatteryLevel = percent
+                sendNtfyNotification(
+                    eventType = "Low Battery Alert ($percent%)",
+                    batteryInfo = newInfo,
+                    priority = 5,
+                    tags = listOf("warning", "battery", "zap")
+                )
+            }
+        } else if (percent > config.lowBatteryThreshold + 2 || isCharging) {
+            lastSentLowBatteryLevel = -1
         }
 
         // Full Battery Alert Trigger
@@ -416,11 +421,12 @@ class BatteryMonitorService : Service() {
         _subscribedDeviceStates.value = currentStates
         prefsRepo.saveSubscribedDeviceStates(currentStates)
 
-        // Post Local Android System Notification if remote battery level drops to or below per-device custom threshold
+        // Post Local Android System Notification if remote battery level drops to or below per-device custom threshold or receives Low Battery payload
         if (config.notifyOnRemoteLowBattery && mergedState.isAlertEnabled && !mergedState.isSnoozed()) {
             val threshold = mergedState.customLowBatteryThreshold
             val percent = mergedState.batteryPercent
-            if (percent in 1..threshold) {
+            val isLowEvent = mergedState.triggerEvent.contains("Low Battery", ignoreCase = true) || mergedState.triggerEvent.contains("Warning", ignoreCase = true)
+            if (percent in 1..threshold || isLowEvent) {
                 val lastNotified = lastNotifiedRemoteLowBatteryLevel[mergedState.topic] ?: -1
                 if (lastNotified != percent) {
                     lastNotifiedRemoteLowBatteryLevel[mergedState.topic] = percent

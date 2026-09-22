@@ -215,8 +215,8 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         onValueChange = {
                             viewModel.updateConfig(config.copy(lowBatteryThreshold = it.roundToInt()))
                         },
-                        valueRange = 5f..30f,
-                        steps = 24
+                        valueRange = 1f..50f,
+                        steps = 48
                     )
                 }
             }
