@@ -112,11 +112,19 @@ class BatteryMonitorService : Service() {
                     PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
                 )
                 val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                alarmManager.set(
-                    AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + 1000,
-                    restartServicePendingIntent
-                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + 500,
+                        restartServicePendingIntent
+                    )
+                } else {
+                    alarmManager.set(
+                        AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + 500,
+                        restartServicePendingIntent
+                    )
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -195,19 +203,14 @@ class BatteryMonitorService : Service() {
 
         val config = prefsRepo.getConfig()
 
-        // Low Battery Warning Alert: Published to ntfy ONLY when battery drops to or below configured low battery threshold (e.g. <= 20%)
-        if (config.notifyOnLowBattery && percent in 1..config.lowBatteryThreshold) {
-            if (!isCharging && percent != lastSentLowBatteryLevel) {
-                lastSentLowBatteryLevel = percent
-                sendNtfyNotification(
-                    eventType = "Low Battery Alert ($percent%)",
-                    batteryInfo = newInfo,
-                    priority = 5,
-                    tags = listOf("warning", "battery", "zap")
-                )
-            }
-        } else if (percent > config.lowBatteryThreshold + 2 || isCharging) {
-            lastSentLowBatteryLevel = -1
+        // Status Telemetry Broadcast: Send status update whenever battery level changes so receiver devices receive live updates
+        if (percent > 0 && percent != lastSentLowBatteryLevel) {
+            lastSentLowBatteryLevel = percent
+            val isLow = percent <= config.lowBatteryThreshold
+            val eventType = if (isLow) "Low Battery Alert ($percent%)" else "Battery Status ($percent%)"
+            val priority = if (isLow) 5 else config.defaultPriority
+            val tags = if (isLow) listOf("warning", "battery", "zap") else listOf("battery")
+            sendNtfyNotification(eventType, newInfo, priority = priority, tags = tags)
         }
 
         // Full Battery Alert Trigger
@@ -399,7 +402,7 @@ class BatteryMonitorService : Service() {
         }
 
         val currentStates = _subscribedDeviceStates.value.toMutableList()
-        val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) || it.deviceName.equals(state.deviceName, ignoreCase = true) }
+        val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) }
         val oldState = if (existingIndex >= 0) currentStates[existingIndex] else null
 
         // Preserve local per-device settings (customLowBatteryThreshold, snoozedUntilTimestamp, isAlertEnabled)

@@ -159,8 +159,9 @@ data class SubscribedDeviceState(
                 batteryPercent = levelMatch.groupValues[1].toIntOrNull() ?: 0
             }
 
-            // Extract Charging Status
-            if (fullText.contains("Charging", ignoreCase = true) || fullText.contains("🔌")) {
+            // Extract Charging Status (Ensure 'Discharging' does not match 'Charging')
+            val isExplicitDischarging = fullText.contains("Discharging", ignoreCase = true) || fullText.contains("Unplugged", ignoreCase = true)
+            if (!isExplicitDischarging && (fullText.contains("Status: Charging", ignoreCase = true) || fullText.contains("🔌") || fullText.contains("is Charging", ignoreCase = true) || fullText.contains("Plugged", ignoreCase = true))) {
                 isCharging = true
                 pluggedType = when {
                     fullText.contains("AC", ignoreCase = true) -> "AC Charger"
