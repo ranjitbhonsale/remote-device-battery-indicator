@@ -12,6 +12,7 @@ import android.os.PowerManager
 import work.ranjit.batteryntfy.data.BatteryInfo
 import work.ranjit.batteryntfy.data.PreferencesRepository
 import work.ranjit.batteryntfy.network.NtfyPublisher
+import work.ranjit.batteryntfy.network.NtfySubscriber
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -25,7 +26,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "BatteryNtfy:WatchdogWakeLock")
         try {
-            wakeLock?.acquire(10000L)
+            wakeLock?.acquire(15000L)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -39,6 +40,9 @@ class AlarmReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.Default).launch {
             try {
+                val config = repo.getConfig()
+                val publisher = NtfyPublisher()
+
                 val batteryStatusIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
                 if (batteryStatusIntent != null) {
                     val level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
@@ -67,8 +71,6 @@ class AlarmReceiver : BroadcastReceiver() {
                         technology = tech
                     )
 
-                    val config = repo.getConfig()
-                    val publisher = NtfyPublisher()
                     publisher.publishNotification(
                         config = config,
                         eventType = "Watchdog Keep-Alive ($percent%)",
@@ -76,6 +78,23 @@ class AlarmReceiver : BroadcastReceiver() {
                         priorityOverride = config.defaultPriority,
                         tags = listOf("clock", "battery", "heartbeat")
                     )
+                }
+
+                // 3. Poll remote device topics and raise alerts if any device drops below its threshold while receiver phone is in Doze Mode
+                if (config.receiveNotificationsEnabled && config.subscribedTopics.isNotEmpty()) {
+                    val subscriber = NtfySubscriber()
+                    for (subTopic in config.subscribedTopics) {
+                        try {
+                            publisher.publishRefreshRequest(config, subTopic)
+                            kotlinx.coroutines.delay(1500L)
+                            val state = subscriber.fetchLatestDeviceState(config, subTopic)
+                            if (state != null) {
+                                BatteryMonitorService.processRemoteDeviceStateFromBackground(context, state, config)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -90,7 +109,7 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val WATCHDOG_INTERVAL_MS = 15 * 60 * 1000L // 15 Minutes
+        const val WATCHDOG_INTERVAL_MS = 3 * 60 * 1000L // 3 Minutes
 
         fun scheduleNextWatchdog(context: Context) {
             try {

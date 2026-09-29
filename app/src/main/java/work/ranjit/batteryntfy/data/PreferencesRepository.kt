@@ -82,7 +82,7 @@ class PreferencesRepository(context: Context) {
     // Subscribed Remote Device States
     fun saveSubscribedDeviceState(state: SubscribedDeviceState) {
         val currentStates = getSubscribedDeviceStates().toMutableList()
-        val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) || it.deviceName.equals(state.deviceName, ignoreCase = true) }
+        val existingIndex = currentStates.indexOfFirst { it.topic.equals(state.topic, ignoreCase = true) }
         if (existingIndex >= 0) {
             currentStates[existingIndex] = state
         } else {
