@@ -9,7 +9,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "work.ranjit.batteryntfy"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 36
         versionCode = 29
         versionName = "3.8"
