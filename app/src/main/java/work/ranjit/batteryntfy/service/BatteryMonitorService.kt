@@ -361,7 +361,11 @@ class BatteryMonitorService : Service() {
         lastRefreshResponseTime = now
 
         // Get exact live battery info directly from system OS
-        val batteryStatusIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val batteryStatusIntent = try {
+            registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        } catch (e: Exception) {
+            null
+        }
         val liveInfo = if (batteryStatusIntent != null) {
             val level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
             val scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)

@@ -6,6 +6,7 @@ import work.ranjit.batteryntfy.data.PreferencesRepository
 import work.ranjit.batteryntfy.network.AppScriptPublisher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,10 +16,13 @@ object DiagnosticLogger {
 
     private val _logsFlow = MutableStateFlow<List<DiagnosticLog>>(emptyList())
     val logsFlow: StateFlow<List<DiagnosticLog>> = _logsFlow.asStateFlow()
+    private val scope = CoroutineScope(Dispatchers.IO + Job())
 
     fun init(context: Context) {
-        val repo = PreferencesRepository(context)
-        _logsFlow.value = repo.getDiagnosticLogs()
+        scope.launch {
+            val repo = PreferencesRepository(context)
+            _logsFlow.value = repo.getDiagnosticLogs()
+        }
     }
 
     fun log(
@@ -27,27 +31,31 @@ object DiagnosticLogger {
         category: String, // "SERVICE", "NETWORK", "SUBSCRIBER", "ALARM_WATCHDOG", "BATTERY", "PERMISSIONS"
         title: String,
         message: String,
-        details: String = ""
+        details: String = "",
+        deviceName: String = ""
     ) {
-        val repo = PreferencesRepository(context)
-        val config = repo.getConfig()
-        val deviceName = config.deviceName
+        scope.launch {
+            val repo = PreferencesRepository(context)
+            val config = repo.getConfig()
+            val effectiveDeviceName = if (deviceName.isNotBlank()) deviceName else config.deviceName
 
-        val newLog = DiagnosticLog(
-            level = level,
-            category = category,
-            title = title,
-            message = message,
-            details = details,
-            deviceName = deviceName
-        )
+            val newLog = DiagnosticLog(
+                level = level,
+                category = category,
+                title = title,
+                message = message,
+                details = details,
+                deviceName = effectiveDeviceName
+            )
 
-        repo.addDiagnosticLog(newLog)
-        _logsFlow.value = repo.getDiagnosticLogs()
+            val currentList = _logsFlow.value
+            val updatedList = (listOf(newLog) + currentList).take(200)
+            _logsFlow.value = updatedList
 
-        // If Apps Script URL is configured and this is an ERROR or WARN event, auto-send diagnostic report
-        if (config.appScriptUrl.isNotBlank() && (level == "ERROR" || level == "WARN")) {
-            CoroutineScope(Dispatchers.IO).launch {
+            repo.saveDiagnosticLogs(updatedList)
+
+            // If Apps Script URL is configured and this is an ERROR or WARN event, auto-send diagnostic report
+            if (config.appScriptUrl.isNotBlank() && (level == "ERROR" || level == "WARN")) {
                 try {
                     AppScriptPublisher.sendDiagnosticReport(
                         context = context,
@@ -62,8 +70,11 @@ object DiagnosticLogger {
     }
 
     fun clear(context: Context) {
-        val repo = PreferencesRepository(context)
-        repo.clearDiagnosticLogs()
-        _logsFlow.value = emptyList()
+        scope.launch {
+            val repo = PreferencesRepository(context)
+            repo.clearDiagnosticLogs()
+            _logsFlow.value = emptyList()
+        }
     }
 }
+

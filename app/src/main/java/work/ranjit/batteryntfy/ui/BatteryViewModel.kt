@@ -19,6 +19,7 @@ import work.ranjit.batteryntfy.network.NtfyPublisher
 import work.ranjit.batteryntfy.network.NtfySubscriber
 import work.ranjit.batteryntfy.service.BatteryMonitorService
 import work.ranjit.batteryntfy.service.DiagnosticLogger
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -170,7 +171,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val cleanTopic = topic.trim()
         if (cleanTopic.isBlank()) return
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _refreshingDevices.value = _refreshingDevices.value + cleanTopic
             val currentConfig = config.value
 
@@ -201,7 +202,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val topics = config.value.subscribedTopics
         if (topics.isEmpty()) return
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isRefreshingRemoteDevices.value = true
             _refreshingDevices.value = _refreshingDevices.value + topics.toSet()
             val currentConfig = config.value
@@ -242,7 +243,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun pollSingleRemoteDevice(topic: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isRefreshingRemoteDevices.value = true
             val newState = ntfySubscriber.fetchLatestDeviceState(config.value, topic)
             val currentStates = prefsRepo.getSubscribedDeviceStates().toMutableList()
@@ -287,7 +288,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun sendTestNotification() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isSendingTest.value = true
             _testResult.value = null
 
@@ -317,7 +318,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun sendImmediateUpdate() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isSendingTest.value = true
             val currentInfo = batteryInfo.value
             val currentConfig = config.value
@@ -365,7 +366,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isSendingDiagnostic.value = true
             _diagnosticResult.value = null
             val result = AppScriptPublisher.sendDiagnosticReport(
