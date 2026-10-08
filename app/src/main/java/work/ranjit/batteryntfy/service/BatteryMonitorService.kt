@@ -566,6 +566,8 @@ class BatteryMonitorService : Service() {
             repo.saveSubscribedDeviceStates(existingStates)
             updateSubscribedStates(existingStates)
 
+            DiagnosticLogger.log(context, "INFO", "SUBSCRIBER", "State Updated [${updatedState.topic}]", "Device: ${updatedState.deviceName}, Battery: ${updatedState.batteryPercent}%, Charging: ${updatedState.isCharging}, LowThreshold: ${updatedState.customLowBatteryThreshold}%")
+
             if (config.receiveNotificationsEnabled && config.notifyOnRemoteLowBattery && updatedState.isAlertEnabled) {
                 val isLow = updatedState.batteryPercent <= updatedState.customLowBatteryThreshold
                 val isDischarging = !updatedState.isCharging
@@ -671,6 +673,7 @@ class BatteryMonitorService : Service() {
 
             try {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                DiagnosticLogger.log(context, "WARN", "BATTERY", "Distinct Low Battery Alert Fired", "Device: $deviceName at $batteryPercent% (Event: $triggerEvent)")
                 nm.notify(notificationId, notification)
             } catch (e: Exception) {
                 e.printStackTrace()

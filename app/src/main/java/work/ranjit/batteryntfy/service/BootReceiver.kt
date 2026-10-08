@@ -15,6 +15,8 @@ class BootReceiver : BroadcastReceiver() {
                 intent.action == "android.intent.action.QUICKBOOT_POWERON" ||
                 intent.action == "com.htc.intent.action.QUICKBOOT_POWERON"
 
+        DiagnosticLogger.log(context, "INFO", "SERVICE", "Boot Receiver Triggered", "Action: ${intent.action}, AutoStart: ${config.autoStartOnBoot}, ServiceWasEnabled: ${repo.isServiceEnabled()}")
+
         if (isBoot && config.autoStartOnBoot) {
             repo.setServiceEnabled(true)
             BatteryMonitorService.start(context)

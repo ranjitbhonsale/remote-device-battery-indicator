@@ -31,6 +31,8 @@ class AlarmReceiver : BroadcastReceiver() {
             e.printStackTrace()
         }
 
+        DiagnosticLogger.log(context, "INFO", "ALARM_WATCHDOG", "Watchdog Wakeup", "3-min AlarmReceiver active. ServiceRunning: ${BatteryMonitorService.isServiceRunning.value}")
+
         // 1. Ensure Foreground Service is alive
         if (!BatteryMonitorService.isServiceRunning.value) {
             BatteryMonitorService.start(context)
@@ -89,14 +91,19 @@ class AlarmReceiver : BroadcastReceiver() {
                             kotlinx.coroutines.delay(1500L)
                             val state = subscriber.fetchLatestDeviceState(config, subTopic)
                             if (state != null) {
+                                DiagnosticLogger.log(context, "INFO", "ALARM_WATCHDOG", "Polled Topic [$subTopic]", "Device: ${state.deviceName}, Battery: ${state.batteryPercent}%, Charging: ${state.isCharging}")
                                 BatteryMonitorService.processRemoteDeviceStateFromBackground(context, state, config)
+                            } else {
+                                DiagnosticLogger.log(context, "WARN", "ALARM_WATCHDOG", "Polled Topic [$subTopic]", "No response received from remote topic")
                             }
                         } catch (e: Exception) {
+                            DiagnosticLogger.log(context, "ERROR", "ALARM_WATCHDOG", "Polling Error [$subTopic]", e.localizedMessage ?: e.toString())
                             e.printStackTrace()
                         }
                     }
                 }
             } catch (e: Exception) {
+                DiagnosticLogger.log(context, "ERROR", "ALARM_WATCHDOG", "Watchdog Execution Error", e.localizedMessage ?: e.toString())
                 e.printStackTrace()
             } finally {
                 scheduleNextWatchdog(context)

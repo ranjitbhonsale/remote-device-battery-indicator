@@ -25,7 +25,10 @@ data class NtfyConfig(
     val subscribedTopics: List<String> = emptyList(),
     val receiveNotificationsEnabled: Boolean = true,
     val notifyOnRemoteLowBattery: Boolean = true,
-    val remoteLowBatteryThreshold: Int = 20
+    val remoteLowBatteryThreshold: Int = 20,
+
+    // Google Apps Script / Remote Webhook Logging
+    val appScriptUrl: String = ""
 ) {
     fun getFullTopicUrl(): String {
         val cleanServer = serverUrl.trim().removeSuffix("/")

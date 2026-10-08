@@ -32,6 +32,7 @@ class PreferencesRepository(context: Context) {
             putBoolean(KEY_RECEIVE_NOTIFICATIONS_ENABLED, config.receiveNotificationsEnabled)
             putBoolean(KEY_NOTIFY_ON_REMOTE_LOW, config.notifyOnRemoteLowBattery)
             putInt(KEY_REMOTE_LOW_THRESHOLD, config.remoteLowBatteryThreshold)
+            putString(KEY_APPSCRIPT_URL, config.appScriptUrl)
             apply()
         }
     }
@@ -75,7 +76,8 @@ class PreferencesRepository(context: Context) {
             subscribedTopics = topicsList,
             receiveNotificationsEnabled = prefs.getBoolean(KEY_RECEIVE_NOTIFICATIONS_ENABLED, defaultConfig.receiveNotificationsEnabled),
             notifyOnRemoteLowBattery = prefs.getBoolean(KEY_NOTIFY_ON_REMOTE_LOW, defaultConfig.notifyOnRemoteLowBattery),
-            remoteLowBatteryThreshold = prefs.getInt(KEY_REMOTE_LOW_THRESHOLD, defaultConfig.remoteLowBatteryThreshold)
+            remoteLowBatteryThreshold = prefs.getInt(KEY_REMOTE_LOW_THRESHOLD, defaultConfig.remoteLowBatteryThreshold),
+            appScriptUrl = prefs.getString(KEY_APPSCRIPT_URL, defaultConfig.appScriptUrl) ?: defaultConfig.appScriptUrl
         )
     }
 
@@ -173,6 +175,37 @@ class PreferencesRepository(context: Context) {
         prefs.edit().remove(KEY_LOGS_JSON).apply()
     }
 
+    // Diagnostic Logs
+    fun saveDiagnosticLogs(logs: List<DiagnosticLog>) {
+        val jsonArray = JSONArray()
+        logs.take(200).forEach { jsonArray.put(it.toJson()) }
+        prefs.edit().putString(KEY_DIAGNOSTIC_LOGS_JSON, jsonArray.toString()).apply()
+    }
+
+    fun getDiagnosticLogs(): List<DiagnosticLog> {
+        val rawJson = prefs.getString(KEY_DIAGNOSTIC_LOGS_JSON, null) ?: return emptyList()
+        val list = mutableListOf<DiagnosticLog>()
+        try {
+            val jsonArray = JSONArray(rawJson)
+            for (i in 0 until jsonArray.length()) {
+                list.add(DiagnosticLog.fromJson(jsonArray.getJSONObject(i)))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return list
+    }
+
+    fun addDiagnosticLog(log: DiagnosticLog) {
+        val currentLogs = getDiagnosticLogs().toMutableList()
+        currentLogs.add(0, log)
+        saveDiagnosticLogs(currentLogs)
+    }
+
+    fun clearDiagnosticLogs() {
+        prefs.edit().remove(KEY_DIAGNOSTIC_LOGS_JSON).apply()
+    }
+
     fun setServiceEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_SERVICE_ENABLED, enabled).apply()
     }
@@ -205,6 +238,8 @@ class PreferencesRepository(context: Context) {
         private const val KEY_SUBSCRIBED_DEVICES_JSON = "subscribed_devices_json"
 
         private const val KEY_LOGS_JSON = "logs_json"
+        private const val KEY_DIAGNOSTIC_LOGS_JSON = "diagnostic_logs_json"
+        private const val KEY_APPSCRIPT_URL = "appscript_url"
         private const val KEY_SERVICE_ENABLED = "service_enabled"
     }
 }

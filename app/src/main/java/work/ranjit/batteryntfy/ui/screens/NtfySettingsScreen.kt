@@ -712,6 +712,62 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                 }
             }
         }
+
+        // Section 7: Google Apps Script & Remote Diagnostic Logging Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CloudUpload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Column {
+                        Text(
+                            text = "Google Apps Script Remote Logging",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Send live diagnostics & errors to Google Sheets",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                var scriptUrl by remember(config.appScriptUrl) { mutableStateOf(config.appScriptUrl) }
+                OutlinedTextField(
+                    value = scriptUrl,
+                    onValueChange = {
+                        scriptUrl = it
+                        viewModel.updateConfig(config.copy(appScriptUrl = it))
+                    },
+                    label = { Text("Google Apps Script Web App URL") },
+                    placeholder = { Text("https://script.google.com/macros/s/.../exec") },
+                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text(
+                    text = "When configured, errors and diagnostic health reports are posted to your Google Apps Script endpoint automatically or on-demand from the System Diagnostics tab.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 
     // QR Code Scanner Dialog

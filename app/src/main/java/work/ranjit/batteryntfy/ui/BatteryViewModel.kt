@@ -9,13 +9,16 @@ import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import work.ranjit.batteryntfy.data.BatteryInfo
+import work.ranjit.batteryntfy.data.DiagnosticLog
 import work.ranjit.batteryntfy.data.NotificationLog
 import work.ranjit.batteryntfy.data.NtfyConfig
 import work.ranjit.batteryntfy.data.PreferencesRepository
 import work.ranjit.batteryntfy.data.SubscribedDeviceState
+import work.ranjit.batteryntfy.network.AppScriptPublisher
 import work.ranjit.batteryntfy.network.NtfyPublisher
 import work.ranjit.batteryntfy.network.NtfySubscriber
 import work.ranjit.batteryntfy.service.BatteryMonitorService
+import work.ranjit.batteryntfy.service.DiagnosticLogger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +42,14 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     private val _logs = MutableStateFlow(prefsRepo.getLogs())
     val logs: StateFlow<List<NotificationLog>> = _logs.asStateFlow()
 
+    val diagnosticLogs: StateFlow<List<DiagnosticLog>> = DiagnosticLogger.logsFlow
+
+    private val _isSendingDiagnostic = MutableStateFlow(false)
+    val isSendingDiagnostic: StateFlow<Boolean> = _isSendingDiagnostic.asStateFlow()
+
+    private val _diagnosticResult = MutableStateFlow<String?>(null)
+    val diagnosticResult: StateFlow<String?> = _diagnosticResult.asStateFlow()
+
     private val _isSendingTest = MutableStateFlow(false)
     val isSendingTest: StateFlow<Boolean> = _isSendingTest.asStateFlow()
 
@@ -55,7 +66,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     val isIgnoringBatteryOptimizations: StateFlow<Boolean> = _isIgnoringBatteryOptimizations.asStateFlow()
 
     init {
-        // Load initial subscribed device states on startup
+        DiagnosticLogger.init(application)
         refreshSubscribedDevices()
     }
 
@@ -340,6 +351,44 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         } catch (e: Exception) {
             true
         }
+    }
+
+    fun clearDiagnosticLogs() {
+        DiagnosticLogger.clear(getApplication<Application>())
+    }
+
+    fun sendDiagnosticReport(customUrl: String? = null, customNote: String = "") {
+        val targetUrl = customUrl ?: config.value.appScriptUrl
+        val app = getApplication<Application>()
+        if (targetUrl.isBlank()) {
+            _diagnosticResult.value = "Error: Please enter a Google Apps Script Web App URL."
+            return
+        }
+
+        viewModelScope.launch {
+            _isSendingDiagnostic.value = true
+            _diagnosticResult.value = null
+            val result = AppScriptPublisher.sendDiagnosticReport(
+                context = app,
+                targetUrl = targetUrl,
+                customNote = customNote.ifBlank { "Manual Diagnostic Report" }
+            )
+            _isSendingDiagnostic.value = false
+            _diagnosticResult.value = result.second
+
+            DiagnosticLogger.log(
+                context = app,
+                level = if (result.first) "SUCCESS" else "ERROR",
+                category = "NETWORK",
+                title = "Apps Script Diagnostic Report",
+                message = result.second,
+                details = "Target URL: $targetUrl"
+            )
+        }
+    }
+
+    fun clearDiagnosticResult() {
+        _diagnosticResult.value = null
     }
 
     fun requestDisableBatteryOptimization(context: Context) {
