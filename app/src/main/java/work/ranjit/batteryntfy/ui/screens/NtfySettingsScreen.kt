@@ -292,29 +292,47 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                 }
 
                 // Test Alert Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { viewModel.triggerTestDistinctAlert(isLocal = true) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Test Lock Screen Alerts & Sound:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Test Local Alert", fontSize = 11.sp)
+                        Button(
+                            onClick = {
+                                Toast.makeText(context, "Lock your screen NOW! Alert will wake screen in 3s...", Toast.LENGTH_LONG).show()
+                                viewModel.triggerTestDistinctAlertWithDelay(isLocal = false, delaySeconds = 3)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(Icons.Default.LockClock, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Test Lock Screen (in 3s)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.triggerTestDistinctAlert(isLocal = false) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Test Alert Now", fontSize = 11.sp)
+                        }
                     }
 
-                    OutlinedButton(
-                        onClick = { viewModel.triggerTestDistinctAlert(isLocal = false) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.Vibration, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Test Remote Alert", fontSize = 11.sp)
-                    }
+                    Text(
+                        text = "Tip: Tap 'Test Lock Screen (in 3s)', then press your device's power button to lock it. In 3 seconds, the screen will turn on and display the full-screen emergency alarm dialog.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

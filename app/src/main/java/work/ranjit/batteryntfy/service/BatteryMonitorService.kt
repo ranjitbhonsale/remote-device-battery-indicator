@@ -25,6 +25,7 @@ import work.ranjit.batteryntfy.data.PreferencesRepository
 import work.ranjit.batteryntfy.data.SubscribedDeviceState
 import work.ranjit.batteryntfy.network.NtfyPublisher
 import work.ranjit.batteryntfy.network.NtfySubscriber
+import work.ranjit.batteryntfy.ui.LockScreenAlarmActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -480,14 +481,18 @@ class BatteryMonitorService : Service() {
             ).apply {
                 description = "Urgent alerts with distinct alarm sound & vibration when any local or remote device battery drops below preset threshold"
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 400)
+                vibrationPattern = longArrayOf(0, 500, 250, 500, 250, 500)
                 enableLights(true)
                 lightColor = android.graphics.Color.RED
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
+                val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 val audioAttrs = AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .build()
-                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttrs)
+                setSound(alarmUri, audioAttrs)
             }
             nm.createNotificationChannel(distinctLowChannel)
         }
@@ -597,17 +602,45 @@ class BatteryMonitorService : Service() {
             val isCharging = deviceState.isCharging
             val pluggedType = deviceState.pluggedType
             val triggerEvent = deviceState.triggerEvent
-
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-            }
             val notificationId = Math.abs(topic.hashCode()) + 2000
-            val pendingIntent = PendingIntent.getActivity(
+
+            // 1. Physically turn on display using PowerManager wake lock
+            try {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                val wakeLock = pm?.newWakeLock(
+                    android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "BatteryNtfy:LockScreenAlarmWakeLock"
+                )
+                wakeLock?.acquire(10000L)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 2. Intent to launch dedicated LockScreenAlarmActivity over keyguard
+            val alarmIntent = Intent(context, LockScreenAlarmActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(LockScreenAlarmActivity.EXTRA_DEVICE_NAME, deviceName)
+                putExtra(LockScreenAlarmActivity.EXTRA_BATTERY_PERCENT, batteryPercent)
+                putExtra(LockScreenAlarmActivity.EXTRA_IS_CHARGING, isCharging)
+                putExtra(LockScreenAlarmActivity.EXTRA_PLUGGED_TYPE, pluggedType)
+                putExtra(LockScreenAlarmActivity.EXTRA_TOPIC, topic)
+                putExtra(LockScreenAlarmActivity.EXTRA_NOTIFICATION_ID, notificationId)
+                putExtra(LockScreenAlarmActivity.EXTRA_IS_LOCAL, false)
+            }
+
+            val fullScreenPendingIntent = PendingIntent.getActivity(
                 context,
-                notificationId,
-                intent,
+                notificationId + 5000,
+                alarmIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
+
+            // Directly start LockScreenAlarmActivity so it displays over lock screen immediately
+            try {
+                context.startActivity(alarmIntent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
             val snooze30Intent = Intent(context, NotificationActionReceiver::class.java).apply {
                 action = NotificationActionReceiver.ACTION_SNOOZE_ALERT
@@ -648,32 +681,26 @@ class BatteryMonitorService : Service() {
             )
 
             val chargingText = if (isCharging) "Charging ($pluggedType)" else "Discharging"
-            val title = "🪫 REMOTE LOW BATTERY: [$deviceName] is at $batteryPercent%"
+            val title = "🚨 REMOTE LOW BATTERY: [$deviceName] is at $batteryPercent%"
             val text = "Remote device ($deviceName) is $chargingText. Battery level has dropped to $batteryPercent% ($triggerEvent)."
 
-            val builder = NotificationCompat.Builder(context, DISTINCT_LOW_BATTERY_CHANNEL_ID)
+            val notification = NotificationCompat.Builder(context, DISTINCT_LOW_BATTERY_CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(text)
-                .setSubText("Remote Battery Alert")
+                .setSubText("Remote Battery Alarm")
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentIntent(pendingIntent)
+                .setContentIntent(fullScreenPendingIntent)
+                .setFullScreenIntent(fullScreenPendingIntent, true)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setVibrate(longArrayOf(0, 400, 200, 400, 200, 400))
+                .setVibrate(longArrayOf(0, 500, 250, 500, 250, 500))
                 .addAction(0, "💤 Snooze 30m", snooze30PendingIntent)
                 .addAction(0, "💤 Snooze 1h", snooze60PendingIntent)
                 .addAction(0, "Dismiss", dismissPendingIntent)
-
-            try {
-                builder.setFullScreenIntent(pendingIntent, true)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            val notification = builder.build()
+                .build()
 
             try {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -685,34 +712,79 @@ class BatteryMonitorService : Service() {
         }
 
         fun triggerTestDistinctAlert(context: Context, isLocal: Boolean, deviceName: String, percent: Int) {
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            val notificationId = 8888
+
+            // 1. Physically turn on display using PowerManager wake lock
+            try {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                val wakeLock = pm?.newWakeLock(
+                    android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "BatteryNtfy:LockScreenAlarmWakeLock"
+                )
+                wakeLock?.acquire(10000L)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            val pendingIntent = PendingIntent.getActivity(
+
+            // 2. Intent to launch LockScreenAlarmActivity directly over keyguard
+            val alarmIntent = Intent(context, LockScreenAlarmActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(LockScreenAlarmActivity.EXTRA_DEVICE_NAME, deviceName)
+                putExtra(LockScreenAlarmActivity.EXTRA_BATTERY_PERCENT, percent)
+                putExtra(LockScreenAlarmActivity.EXTRA_IS_CHARGING, false)
+                putExtra(LockScreenAlarmActivity.EXTRA_PLUGGED_TYPE, "")
+                putExtra(LockScreenAlarmActivity.EXTRA_TOPIC, "test_topic")
+                putExtra(LockScreenAlarmActivity.EXTRA_NOTIFICATION_ID, notificationId)
+                putExtra(LockScreenAlarmActivity.EXTRA_IS_LOCAL, isLocal)
+            }
+
+            val fullScreenPendingIntent = PendingIntent.getActivity(
                 context,
-                8888,
-                intent,
+                notificationId + 5000,
+                alarmIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            // Directly start activity so it shows over lock screen immediately
+            try {
+                context.startActivity(alarmIntent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            val dismissIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+                action = NotificationActionReceiver.ACTION_DISMISS_ALERT
+                putExtra(NotificationActionReceiver.EXTRA_TOPIC, "test_topic")
+                putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+            }
+            val dismissPendingIntent = PendingIntent.getBroadcast(
+                context,
+                notificationId * 31 + 3,
+                dismissIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
 
             val title = if (isLocal) "🚨 TEST: THIS DEVICE LOW BATTERY ($percent%)" else "🪫 TEST: REMOTE [$deviceName] LOW BATTERY ($percent%)"
-            val text = "Test Alert: Distinct sound and vibration triggered for device $deviceName at $percent%."
+            val text = "Test Lock Screen Alert: Full screen alarm and vibration triggered for device $deviceName at $percent%."
 
             val notification = NotificationCompat.Builder(context, DISTINCT_LOW_BATTERY_CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setSubText("Distinct Alert Test")
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentIntent(pendingIntent)
+                .setContentIntent(fullScreenPendingIntent)
+                .setFullScreenIntent(fullScreenPendingIntent, true)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setVibrate(longArrayOf(0, 400, 200, 400, 200, 400))
+                .setVibrate(longArrayOf(0, 500, 250, 500, 250, 500))
+                .addAction(0, "Dismiss", dismissPendingIntent)
                 .build()
 
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(8888, notification)
+            nm.notify(notificationId, notification)
         }
 
         fun updateSubscribedStates(states: List<SubscribedDeviceState>) {

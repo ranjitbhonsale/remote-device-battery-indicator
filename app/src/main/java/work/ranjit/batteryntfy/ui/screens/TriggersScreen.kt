@@ -10,9 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import work.ranjit.batteryntfy.ui.BatteryViewModel
 import kotlin.math.roundToInt
 
@@ -218,6 +220,35 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         valueRange = 1f..50f,
                         steps = 48
                     )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                Toast.makeText(context, "Lock your screen NOW! Alert will wake screen in 3s...", Toast.LENGTH_LONG).show()
+                                viewModel.triggerTestDistinctAlertWithDelay(isLocal = true, delaySeconds = 3)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(Icons.Default.LockClock, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Test Lock Screen (in 3s)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.triggerTestDistinctAlert(isLocal = true) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Test Alert Now", fontSize = 11.sp)
+                        }
+                    }
                 }
             }
         }

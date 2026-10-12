@@ -47,6 +47,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.LockScreenAlarmActivity"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.BatteryNtfy" />
+
         <service
             android:name=".service.BatteryMonitorService"
             android:enabled="true"

@@ -278,6 +278,18 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         BatteryMonitorService.triggerTestDistinctAlert(context, isLocal, deviceName, percent)
     }
 
+    fun triggerTestDistinctAlertWithDelay(isLocal: Boolean, delaySeconds: Int = 3) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (delaySeconds > 0) {
+                delay(delaySeconds * 1000L)
+            }
+            val context = getApplication<Application>()
+            val deviceName = if (isLocal) config.value.deviceName else "Remote Tablet"
+            val percent = if (isLocal) config.value.lowBatteryThreshold else config.value.remoteLowBatteryThreshold
+            BatteryMonitorService.triggerTestDistinctAlert(context, isLocal, deviceName, percent)
+        }
+    }
+
     fun refreshLogs() {
         _logs.value = prefsRepo.getLogs()
     }
