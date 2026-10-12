@@ -47,7 +47,7 @@ object AppScriptPublisher {
             put("deviceName", config.deviceName)
             put("androidVersion", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             put("deviceModel", "${Build.MANUFACTURER} ${Build.MODEL}")
-            put("appVersion", "3.7 (Build 28)")
+            put("appVersion", "3.9 (Build 30)")
             put("customNote", customNote)
 
             put("batteryPercent", currentBattery.levelPercent)
