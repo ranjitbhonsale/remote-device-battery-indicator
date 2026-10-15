@@ -310,7 +310,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
                             Icon(Icons.Default.LockClock, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -329,7 +329,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                     }
 
                     Text(
-                        text = "Tip: Tap 'Test Lock Screen (in 3s)', then press your device's power button to lock it. In 3 seconds, the screen will turn on and display the full-screen emergency alarm dialog.",
+                        text = "Tip: Tap 'Test Lock Screen (in 3s)', then press your device's power button to lock it. In 3 seconds, the screen will turn on and display the mild battery notification card (adheres to DND settings).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

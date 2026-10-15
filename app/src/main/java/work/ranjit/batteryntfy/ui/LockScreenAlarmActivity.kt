@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
@@ -17,6 +18,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -114,27 +116,36 @@ class LockScreenAlarmActivity : ComponentActivity() {
     }
 
     private fun startAlarmSoundAndVibration() {
-        // 1. Play continuous alarm ringtone audio
-        try {
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(applicationContext, alarmUri)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                isLooping = true
-                prepare()
-                start()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        // If DND or Silent mode is active on device, do NOT play sound or vibrate
+        if (BatteryMonitorService.isDndOrSilentActive(this)) {
+            return
         }
 
-        // 2. Play continuous pulsing vibration
+        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val ringerMode = am?.ringerMode ?: AudioManager.RINGER_MODE_NORMAL
+
+        // 1. Play mild single notification chime (not an alarm, not looping)
+        if (ringerMode == AudioManager.RINGER_MODE_NORMAL) {
+            try {
+                val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                mediaPlayer = MediaPlayer().apply {
+                    setDataSource(applicationContext, notificationUri)
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                    isLooping = false // Plays once, politely
+                    prepare()
+                    start()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // 2. Play gentle single vibration (two soft taps, no looping)
         try {
             vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
@@ -144,12 +155,12 @@ class LockScreenAlarmActivity : ComponentActivity() {
                 getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             }
 
-            val pattern = longArrayOf(0, 600, 300, 600, 300, 600, 800)
+            val pattern = longArrayOf(0, 120, 80, 120)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0)) // 0 = loop
+                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1)) // -1 = play once
             } else {
                 @Suppress("DEPRECATION")
-                vibrator?.vibrate(pattern, 0)
+                vibrator?.vibrate(pattern, -1)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -225,173 +236,157 @@ fun LockScreenAlarmScreen(
     onDismiss: () -> Unit,
     onOpenApp: () -> Unit
 ) {
-    // Pulse animation for critical alarm badge
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-
-    // Auto-timeout safeguard after 45 seconds of continuous ringing
+    // Auto-timeout safeguard after 20 seconds of display
     LaunchedEffect(Unit) {
-        delay(45_000L)
+        delay(20_000L)
         onDismiss()
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF1E0A0A),
-                        Color(0xFF0F0505),
-                        Color(0xFF000000)
-                    )
-                )
-            )
+            .background(Color(0xD90B1120)) // Calm dark translucent slate backdrop (no red tones)
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.fillMaxWidth()
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF1E293B), // Modern dark slate
+            border = BorderStroke(1.dp, Color(0xFF334155)),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 340.dp)
         ) {
-            // Flashing Alarm Badge Icon
-            Box(
-                modifier = Modifier
-                    .scale(pulseScale)
-                    .size(96.dp)
-                    .background(Color(0xFFEF4444).copy(alpha = 0.2f), shape = CircleShape),
-                contentAlignment = Alignment.Center
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(22.dp)
             ) {
+                // Calm, simple battery icon badge (no pulsing, no red!)
                 Box(
                     modifier = Modifier
-                        .size(72.dp)
-                        .background(Color(0xFFEF4444), shape = CircleShape),
+                        .size(52.dp)
+                        .background(Color(0xFF0F172A), shape = CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.BatteryAlert,
+                        imageVector = if (isCharging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryStd,
                         contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(42.dp)
+                        tint = Color(0xFF38BDF8), // Calming light sky blue
+                        modifier = Modifier.size(28.dp)
                     )
                 }
-            }
 
-            // Headline
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = if (isLocal) "🚨 LOCAL LOW BATTERY" else "🚨 REMOTE LOW BATTERY ALARM",
-                    color = Color(0xFFF87171),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.5.sp
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = deviceName,
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center
-                )
-            }
+                // Header
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (isLocal) "BATTERY NOTICE" else "REMOTE BATTERY NOTICE",
+                        color = Color(0xFF94A3B8),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = deviceName,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
 
-            // Battery Percentage Display Card
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Color(0xFF261212),
-                border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFDC2626)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+                // Battery percentage & charging info
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(vertical = 20.dp, horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = "$batteryPercent%",
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFFEF4444)
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF38BDF8) // Soft sky blue
                     )
                     Text(
-                        text = if (isCharging) "Charging via $pluggedType" else "Discharging • Critical Level",
-                        color = if (isCharging) Color(0xFF34D399) else Color(0xFFFCA5A5),
+                        text = if (isCharging) "Charging ($pluggedType)" else "Discharging",
+                        color = if (isCharging) Color(0xFF34D399) else Color(0xFF94A3B8),
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = if (isLocal) "Plug in this device immediately" else "Connect charger to $deviceName now",
-                        color = Color(0xFF9CA3AF),
-                        style = MaterialTheme.typography.bodySmall
+                        text = if (isLocal) "Please connect charger soon" else "Consider plugging in $deviceName",
+                        color = Color(0xFF64748B),
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
                     )
                 }
-            }
 
-            Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
 
-            // Action Buttons
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Snooze 30 mins
-                Button(
-                    onClick = { onSnooze(30) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF374151)),
-                    shape = RoundedCornerShape(14.dp)
+                // Action Buttons (small, simple, modern)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Default.Snooze, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Snooze Alarm for 30 Min", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                }
+                    // Snooze row (compact)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { onSnooze(30) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF475569)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFCBD5E1)),
+                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Snooze 30m", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
 
-                // Snooze 1 hour
-                OutlinedButton(
-                    onClick = { onSnooze(60) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                ) {
-                    Icon(Icons.Default.Schedule, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Snooze for 1 Hour", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                }
+                        OutlinedButton(
+                            onClick = { onSnooze(60) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF475569)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFCBD5E1)),
+                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Snooze 1h", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
 
-                // Dismiss
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Dismiss Alarm", fontWeight = FontWeight.Black, fontSize = 16.sp)
-                }
+                    // Primary Dismiss button (calm modern blue, NO RED!)
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Dismiss", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    }
 
-                // Open App
-                TextButton(
-                    onClick = onOpenApp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Open BatteryNtfy App", color = Color(0xFF9CA3AF), fontSize = 14.sp)
+                    // Open App (subtle link)
+                    TextButton(
+                        onClick = onOpenApp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(34.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text("Open BatteryNtfy App", color = Color(0xFF64748B), fontSize = 12.sp)
+                    }
                 }
             }
         }
