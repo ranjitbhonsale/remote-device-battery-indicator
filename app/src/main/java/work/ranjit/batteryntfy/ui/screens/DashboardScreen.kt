@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,6 +32,7 @@ import work.ranjit.batteryntfy.data.SubscribedDeviceState
 import work.ranjit.batteryntfy.ui.BatteryViewModel
 import work.ranjit.batteryntfy.ui.components.QrCodeDisplayDialog
 import work.ranjit.batteryntfy.ui.components.QrCodeScannerDialog
+import work.ranjit.batteryntfy.util.ClipboardUtil
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,6 +50,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
     val isRefreshingRemoteDevices by viewModel.isRefreshingRemoteDevices.collectAsState()
     val refreshingDevices by viewModel.refreshingDevices.collectAsState()
     val context = LocalContext.current
+    val composeClipboard = LocalClipboardManager.current
 
     var showAddTopicDialog by remember { mutableStateOf(false) }
     var newTopicInput by remember { mutableStateOf("") }
@@ -285,16 +289,38 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Target ntfy Send Topic",
+                            text = "Target ntfy Send Topic (Tap to copy)",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            text = config.topic,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    ClipboardUtil.copyToClipboard(
+                                        context = context,
+                                        composeClipboard = composeClipboard,
+                                        label = "ntfy Topic",
+                                        text = config.topic,
+                                        toastMessage = "Copied topic '${config.topic}' to clipboard!"
+                                    )
+                                }
+                        ) {
+                            Text(
+                                text = config.topic,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Icon(
+                                Icons.Default.ContentCopy,
+                                contentDescription = "Copy Topic",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
 
                     Button(
@@ -545,6 +571,8 @@ fun RemoteDeviceCard(
     val level = deviceState.batteryPercent.coerceIn(0, 100)
     val threshold = deviceState.customLowBatteryThreshold
     val isSnoozed = deviceState.isSnoozed()
+    val context = LocalContext.current
+    val composeClipboard = LocalClipboardManager.current
 
     val cardColor = when {
         level <= threshold -> Color(0xFFEF4444) // Red when at or below custom low battery threshold
@@ -557,8 +585,10 @@ fun RemoteDeviceCard(
         sdf.format(Date(deviceState.lastUpdatedTimestamp))
     }
 
-    val snoozedTimeFormatted = remember(deviceState.snoozedUntilTimestamp) {
-        if (deviceState.snoozedUntilTimestamp > 0) {
+    val snoozedTimeFormatted = remember(deviceState.snoozedUntilTimestamp, deviceState.isLowBatteryDismissed) {
+        if (deviceState.isLowBatteryDismissed) {
+            "until charged"
+        } else if (deviceState.snoozedUntilTimestamp > 0) {
             val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
             sdf.format(Date(deviceState.snoozedUntilTimestamp))
         } else ""
@@ -604,11 +634,33 @@ fun RemoteDeviceCard(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            text = "Topic: ${deviceState.topic}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable {
+                                    ClipboardUtil.copyToClipboard(
+                                        context = context,
+                                        composeClipboard = composeClipboard,
+                                        label = "Remote Device Topic",
+                                        text = deviceState.topic,
+                                        toastMessage = "Copied topic '${deviceState.topic}' to clipboard!"
+                                    )
+                                }
+                        ) {
+                            Text(
+                                text = "Topic: ${deviceState.topic}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Icon(
+                                Icons.Default.ContentCopy,
+                                contentDescription = "Copy Topic",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
                     }
                 }
 
@@ -809,7 +861,7 @@ fun RemoteDeviceCard(
                                 color = MaterialTheme.colorScheme.secondaryContainer
                             ) {
                                 Text(
-                                    text = "💤 Snoozed until $snoozedTimeFormatted",
+                                    text = if (deviceState.isLowBatteryDismissed) "✓ Dismissed (until charged)" else "💤 Snoozed until $snoozedTimeFormatted",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     fontWeight = FontWeight.Bold,

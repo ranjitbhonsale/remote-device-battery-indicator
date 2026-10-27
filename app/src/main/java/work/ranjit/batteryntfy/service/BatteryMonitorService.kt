@@ -577,11 +577,20 @@ class BatteryMonitorService : Service() {
             val threshold = if (index >= 0) existingStates[index].customLowBatteryThreshold else config.remoteLowBatteryThreshold
             val snoozedUntil = if (index >= 0) existingStates[index].snoozedUntilTimestamp else 0L
             val alertEnabled = if (index >= 0) existingStates[index].isAlertEnabled else true
+            val isDismissed = if (index >= 0) existingStates[index].isLowBatteryDismissed else false
+
+            val isLow = state.batteryPercent <= threshold
+            val isDischarging = !state.isCharging
+
+            // Automatically reset dismissed and snoozed states if device starts charging or rises above threshold
+            val effectiveSnoozeUntil = if (!isLow || state.isCharging) 0L else snoozedUntil
+            val effectiveDismissed = if (!isLow || state.isCharging) false else isDismissed
 
             val updatedState = state.copy(
                 customLowBatteryThreshold = threshold,
-                snoozedUntilTimestamp = snoozedUntil,
-                isAlertEnabled = alertEnabled
+                snoozedUntilTimestamp = effectiveSnoozeUntil,
+                isAlertEnabled = alertEnabled,
+                isLowBatteryDismissed = effectiveDismissed
             )
 
             if (index >= 0) {

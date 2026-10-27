@@ -2,11 +2,14 @@ package work.ranjit.batteryntfy.ui
 
 import android.app.KeyguardManager
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
@@ -37,22 +40,37 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import work.ranjit.batteryntfy.MainActivity
 import work.ranjit.batteryntfy.data.PreferencesRepository
 import work.ranjit.batteryntfy.service.BatteryMonitorService
+import work.ranjit.batteryntfy.service.NotificationActionReceiver
 import work.ranjit.batteryntfy.theme.BatteryNtfyTheme
 import kotlinx.coroutines.delay
 
 class LockScreenAlarmActivity : ComponentActivity() {
 
     private var mediaPlayer: MediaPlayer? = null
+    private var ringtone: Ringtone? = null
     private var vibrator: Vibrator? = null
+    private var isCloseReceiverRegistered = false
+
+    private val closeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val incomingId = intent?.getIntExtra(EXTRA_NOTIFICATION_ID, -1) ?: -1
+            val currentId = this@LockScreenAlarmActivity.intent.getIntExtra(EXTRA_NOTIFICATION_ID, 2000)
+            if (incomingId == -1 || incomingId == currentId) {
+                stopAlarm()
+                finish()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Turn on screen and show over Android keyguard/lock screen
+        // Turn on screen and show over Android keyguard/lock screen (without unlocking device)
         wakeUpAndUnlock()
 
         val deviceName = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: "Remote Device"
@@ -62,6 +80,14 @@ class LockScreenAlarmActivity : ComponentActivity() {
         val topic = intent.getStringExtra(EXTRA_TOPIC) ?: ""
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 2000)
         val isLocal = intent.getBooleanExtra(EXTRA_IS_LOCAL, false)
+
+        try {
+            val filter = IntentFilter(NotificationActionReceiver.ACTION_CLOSE_ALARM_ACTIVITY)
+            ContextCompat.registerReceiver(this, closeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            isCloseReceiverRegistered = true
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         startAlarmSoundAndVibration()
 
@@ -80,12 +106,20 @@ class LockScreenAlarmActivity : ComponentActivity() {
                     },
                     onDismiss = {
                         stopAlarm()
-                        dismissAlert(notificationId)
+                        dismissAlert(topic, notificationId)
+                        finish()
+                    },
+                    onTimeout = {
+                        stopAlarm()
                         finish()
                     },
                     onOpenApp = {
                         stopAlarm()
-                        dismissAlert(notificationId)
+                        dismissAlert(topic, notificationId)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+                            keyguardManager?.requestDismissKeyguard(this@LockScreenAlarmActivity, null)
+                        }
                         val appIntent = Intent(this@LockScreenAlarmActivity, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         }
@@ -101,13 +135,10 @@ class LockScreenAlarmActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
-            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-            keyguardManager?.requestDismissKeyguard(this, null)
         } else {
             @Suppress("DEPRECATION")
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             )
@@ -124,21 +155,20 @@ class LockScreenAlarmActivity : ComponentActivity() {
         val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         val ringerMode = am?.ringerMode ?: AudioManager.RINGER_MODE_NORMAL
 
-        // 1. Play mild single notification chime (not an alarm, not looping)
+        // 1. Play mild single notification chime non-blockingly (not an alarm, not looping)
         if (ringerMode == AudioManager.RINGER_MODE_NORMAL) {
             try {
                 val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                mediaPlayer = MediaPlayer().apply {
-                    setDataSource(applicationContext, notificationUri)
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-                    )
-                    isLooping = false // Plays once, politely
-                    prepare()
-                    start()
+                if (notificationUri != null) {
+                    ringtone = RingtoneManager.getRingtone(applicationContext, notificationUri)?.apply {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            audioAttributes = AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        }
+                        play()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -169,6 +199,13 @@ class LockScreenAlarmActivity : ComponentActivity() {
 
     private fun stopAlarm() {
         try {
+            ringtone?.stop()
+            ringtone = null
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
             mediaPlayer?.stop()
             mediaPlayer?.release()
             mediaPlayer = null
@@ -195,7 +232,8 @@ class LockScreenAlarmActivity : ComponentActivity() {
             val index = states.indexOfFirst { it.topic.equals(topic, ignoreCase = true) }
             if (index >= 0) {
                 val updatedState = states[index].copy(
-                    snoozedUntilTimestamp = System.currentTimeMillis() + durationMs
+                    snoozedUntilTimestamp = System.currentTimeMillis() + durationMs,
+                    isLowBatteryDismissed = false
                 )
                 states[index] = updatedState
                 repo.saveSubscribedDeviceStates(states)
@@ -204,13 +242,36 @@ class LockScreenAlarmActivity : ComponentActivity() {
         }
     }
 
-    private fun dismissAlert(notificationId: Int) {
+    private fun dismissAlert(topic: String, notificationId: Int) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(notificationId)
+
+        if (topic.isNotBlank()) {
+            val repo = PreferencesRepository(this)
+            val states = repo.getSubscribedDeviceStates().toMutableList()
+            val index = states.indexOfFirst { it.topic.equals(topic, ignoreCase = true) }
+            if (index >= 0) {
+                val updatedState = states[index].copy(
+                    isLowBatteryDismissed = true,
+                    snoozedUntilTimestamp = 0L
+                )
+                states[index] = updatedState
+                repo.saveSubscribedDeviceStates(states)
+                BatteryMonitorService.updateSubscribedStates(states)
+            }
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        if (isCloseReceiverRegistered) {
+            try {
+                unregisterReceiver(closeReceiver)
+                isCloseReceiverRegistered = false
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         stopAlarm()
     }
 
@@ -234,12 +295,13 @@ fun LockScreenAlarmScreen(
     isLocal: Boolean,
     onSnooze: (minutes: Int) -> Unit,
     onDismiss: () -> Unit,
+    onTimeout: () -> Unit,
     onOpenApp: () -> Unit
 ) {
     // Auto-timeout safeguard after 20 seconds of display
     LaunchedEffect(Unit) {
         delay(20_000L)
-        onDismiss()
+        onTimeout()
     }
 
     Box(

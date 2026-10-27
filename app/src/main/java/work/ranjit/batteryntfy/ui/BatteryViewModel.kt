@@ -87,7 +87,13 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun addSubscribedTopic(newTopic: String) {
-        val cleanTopic = newTopic.trim()
+        var cleanTopic = newTopic.trim()
+        // If user pasted a full URL (e.g. https://ntfy.sh/my-topic or ntfy.sh/my-topic), extract just the topic
+        if (cleanTopic.startsWith("http://") || cleanTopic.startsWith("https://")) {
+            cleanTopic = cleanTopic.substringAfterLast("/").trim()
+        } else if (cleanTopic.contains("/") && !cleanTopic.startsWith("/")) {
+            cleanTopic = cleanTopic.substringAfterLast("/").trim()
+        }
         if (cleanTopic.isBlank()) return
         val currentConfig = config.value
         val updatedTopics = if (!currentConfig.subscribedTopics.contains(cleanTopic)) {
@@ -145,7 +151,10 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val index = states.indexOfFirst { it.topic.equals(cleanTopic, ignoreCase = true) }
         if (index >= 0) {
             val snoozeUntil = if (durationMs > 0) System.currentTimeMillis() + durationMs else 0L
-            val updated = states[index].copy(snoozedUntilTimestamp = snoozeUntil)
+            val updated = states[index].copy(
+                snoozedUntilTimestamp = snoozeUntil,
+                isLowBatteryDismissed = false
+            )
             states[index] = updated
             prefsRepo.saveSubscribedDeviceStates(states)
             BatteryMonitorService.updateSubscribedStates(states)
