@@ -1,11 +1,10 @@
 package work.ranjit.batteryntfy.ui.components
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,12 +18,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import work.ranjit.batteryntfy.util.ClipboardUtil
 import work.ranjit.batteryntfy.util.QrCodeGenerator
 
 @Composable
@@ -34,6 +35,7 @@ fun QrCodeDisplayDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val composeClipboard = LocalClipboardManager.current
     val qrBitmap = remember(topicUrl) {
         QrCodeGenerator.generateQrCodeBitmap(topicUrl, sizePx = 600)
     }
@@ -105,11 +107,21 @@ fun QrCodeDisplayDialog(
                     }
                 }
 
-                // Topic URL display
+                // Topic URL display (clickable to copy)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            ClipboardUtil.copyToClipboard(
+                                context = context,
+                                composeClipboard = composeClipboard,
+                                label = "ntfy Topic URL",
+                                text = topicUrl,
+                                toastMessage = "Copied topic URL to clipboard!"
+                            )
+                        }
                 ) {
                     Text(
                         text = topicUrl,
@@ -128,10 +140,13 @@ fun QrCodeDisplayDialog(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("ntfy Topic URL", topicUrl)
-                            clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, "Copied topic URL to clipboard!", Toast.LENGTH_SHORT).show()
+                            ClipboardUtil.copyToClipboard(
+                                context = context,
+                                composeClipboard = composeClipboard,
+                                label = "ntfy Topic URL",
+                                text = topicUrl,
+                                toastMessage = "Copied topic URL to clipboard!"
+                            )
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp)

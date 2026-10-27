@@ -1,12 +1,11 @@
 package work.ranjit.batteryntfy.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +29,7 @@ import work.ranjit.batteryntfy.data.NtfyConfig
 import work.ranjit.batteryntfy.ui.BatteryViewModel
 import work.ranjit.batteryntfy.ui.components.QrCodeDisplayDialog
 import work.ranjit.batteryntfy.ui.components.QrCodeScannerDialog
+import work.ranjit.batteryntfy.util.ClipboardUtil
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +39,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
     val isSendingTest by viewModel.isSendingTest.collectAsState()
     val testResult by viewModel.testResult.collectAsState()
     val context = LocalContext.current
+    val composeClipboard = LocalClipboardManager.current
 
     var deviceName by remember(config.deviceName) { mutableStateOf(config.deviceName) }
     var serverUrl by remember(config.serverUrl) { mutableStateOf(config.serverUrl) }
@@ -151,7 +153,18 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                ClipboardUtil.copyToClipboard(
+                                                    context = context,
+                                                    composeClipboard = composeClipboard,
+                                                    label = "Subscribed Topic",
+                                                    text = subTopic,
+                                                    toastMessage = "Copied topic '$subTopic' to clipboard!"
+                                                )
+                                            }
                                     ) {
                                         Icon(Icons.Default.Tag, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                         Text(
@@ -162,11 +175,28 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                                         )
                                     }
 
-                                    IconButton(
-                                        onClick = { viewModel.removeSubscribedTopic(subTopic) },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = {
+                                                ClipboardUtil.copyToClipboard(
+                                                    context = context,
+                                                    composeClipboard = composeClipboard,
+                                                    label = "Subscribed Topic",
+                                                    text = subTopic,
+                                                    toastMessage = "Copied topic '$subTopic' to clipboard!"
+                                                )
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy Topic", modifier = Modifier.size(16.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        IconButton(
+                                            onClick = { viewModel.removeSubscribedTopic(subTopic) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                                        }
                                     }
                                 }
                             }
@@ -529,22 +559,34 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                     placeholder = { Text("my-battery-topic") },
                     leadingIcon = { Icon(Icons.Default.Tag, contentDescription = null) },
                     trailingIcon = {
-                        Row {
-                            IconButton(onClick = {
-                                val newTopic = "battery-" + UUID.randomUUID().toString().take(6)
-                                topic = newTopic
-                                viewModel.updateConfig(config.copy(topic = newTopic))
-                            }) {
-                                Icon(Icons.Default.Autorenew, contentDescription = "Random Topic")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    val newTopic = "battery-" + UUID.randomUUID().toString().take(6)
+                                    topic = newTopic
+                                    viewModel.updateConfig(config.copy(topic = newTopic))
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Autorenew, contentDescription = "Random Topic", modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = {
-                                val fullUrl = config.getFullTopicUrl()
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("ntfy Topic URL", fullUrl)
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "Copied topic URL to clipboard!", Toast.LENGTH_SHORT).show()
-                            }) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Topic")
+                            IconButton(
+                                onClick = {
+                                    val topicToCopy = topic.ifBlank { config.topic }.trim()
+                                    ClipboardUtil.copyToClipboard(
+                                        context = context,
+                                        composeClipboard = composeClipboard,
+                                        label = "ntfy Topic",
+                                        text = topicToCopy,
+                                        toastMessage = "Copied topic '$topicToCopy' to clipboard!"
+                                    )
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Topic", modifier = Modifier.size(20.dp))
                             }
                         }
                     },
@@ -553,7 +595,7 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // Full target URL display & Share / QR Buttons
+                // Full target URL display & Share / QR / Copy Buttons
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(12.dp),
@@ -565,12 +607,24 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val fullUrl = config.getFullTopicUrl()
+                                    ClipboardUtil.copyToClipboard(
+                                        context = context,
+                                        composeClipboard = composeClipboard,
+                                        label = "ntfy Topic URL",
+                                        text = fullUrl,
+                                        toastMessage = "Copied URL to clipboard!"
+                                    )
+                                }
                         ) {
                             Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Full Destination Publish URL:",
+                                    text = "Full Destination Publish URL (Tap to copy):",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -582,20 +636,54 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
+                            IconButton(
+                                onClick = {
+                                    val fullUrl = config.getFullTopicUrl()
+                                    ClipboardUtil.copyToClipboard(
+                                        context = context,
+                                        composeClipboard = composeClipboard,
+                                        label = "ntfy Topic URL",
+                                        text = fullUrl,
+                                        toastMessage = "Copied URL to clipboard!"
+                                    )
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Full URL", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            }
                         }
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val fullUrl = config.getFullTopicUrl()
+                                    ClipboardUtil.copyToClipboard(
+                                        context = context,
+                                        composeClipboard = composeClipboard,
+                                        label = "ntfy Topic URL",
+                                        text = fullUrl,
+                                        toastMessage = "Copied topic URL to clipboard!"
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copy URL")
+                            }
+
                             Button(
                                 onClick = { showQrDisplayDialog = true },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Show QR Code")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("QR Code")
                             }
 
                             OutlinedButton(
@@ -611,8 +699,8 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share Link")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Share")
                             }
                         }
                     }

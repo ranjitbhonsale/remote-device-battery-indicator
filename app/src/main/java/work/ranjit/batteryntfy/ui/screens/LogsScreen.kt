@@ -1,7 +1,5 @@
 package work.ranjit.batteryntfy.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.text.format.DateFormat
 import android.widget.Toast
@@ -20,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import work.ranjit.batteryntfy.data.DiagnosticLog
 import work.ranjit.batteryntfy.data.NotificationLog
 import work.ranjit.batteryntfy.ui.BatteryViewModel
+import work.ranjit.batteryntfy.util.ClipboardUtil
 import java.util.Date
 
 @Composable
@@ -36,6 +36,7 @@ fun LogsScreen(viewModel: BatteryViewModel) {
     val notificationLogs by viewModel.logs.collectAsState()
     val diagnosticLogs by viewModel.diagnosticLogs.collectAsState()
     val context = LocalContext.current
+    val composeClipboard = LocalClipboardManager.current
 
     var showAppsScriptDialog by remember { mutableStateOf(false) }
 
@@ -78,9 +79,13 @@ fun LogsScreen(viewModel: BatteryViewModel) {
                         val allText = diagnosticLogs.joinToString("\n\n") { log ->
                             "[${DateFormat.format("yyyy-MM-dd HH:mm:ss", Date(log.timestamp))}] [${log.level}] [${log.category}] ${log.title}\n${log.message}\n${log.details}"
                         }
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("BatteryNtfy Diagnostics", allText))
-                        Toast.makeText(context, "Copied diagnostic logs to clipboard!", Toast.LENGTH_SHORT).show()
+                        ClipboardUtil.copyToClipboard(
+                            context = context,
+                            composeClipboard = composeClipboard,
+                            label = "BatteryNtfy Diagnostics",
+                            text = allText,
+                            toastMessage = "Copied diagnostic logs to clipboard!"
+                        )
                     }) {
                         Icon(
                             Icons.Default.ContentCopy,
@@ -354,6 +359,7 @@ fun AppsScriptDialog(
     val isSending by viewModel.isSendingDiagnostic.collectAsState()
     val diagnosticResult by viewModel.diagnosticResult.collectAsState()
     val context = LocalContext.current
+    val composeClipboard = LocalClipboardManager.current
 
     val sampleAppsScriptCode = """
 function doPost(e) {
@@ -453,9 +459,13 @@ function doPost(e) {
 
                 OutlinedButton(
                     onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Google Apps Script Starter Code", sampleAppsScriptCode))
-                        Toast.makeText(context, "Copied Google Apps Script code snippet to clipboard!", Toast.LENGTH_SHORT).show()
+                        ClipboardUtil.copyToClipboard(
+                            context = context,
+                            composeClipboard = composeClipboard,
+                            label = "Google Apps Script Starter Code",
+                            text = sampleAppsScriptCode,
+                            toastMessage = "Copied Google Apps Script code snippet to clipboard!"
+                        )
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
