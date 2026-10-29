@@ -1,5 +1,7 @@
 package work.ranjit.batteryntfy.ui.screens
 
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,7 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import android.widget.Toast
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,7 +24,8 @@ import kotlin.math.roundToInt
 @Composable
 fun TriggersScreen(viewModel: BatteryViewModel) {
     val config by viewModel.config.collectAsState()
-    val isIgnoringOpt by viewModel.isIgnoringBatteryOptimizations.collectAsState()
+    val isSendingTest by viewModel.isSendingTest.collectAsState()
+    val testResult by viewModel.testResult.collectAsState()
     val context = LocalContext.current
 
     val scrollState = rememberScrollState()
@@ -34,13 +37,20 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "Notification Rules & Triggers",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
+        Column {
+            Text(
+                text = "Outgoing Broadcast Triggers",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Define when this device publishes battery alerts and status updates to your ntfy topic.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
-        // Master Filter Rule: Only send alerts when battery is below pre-selected level
+        // Rule 1: Master Filter Rule (Silence routine updates when battery is healthy)
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -71,7 +81,7 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         Column {
                             Text("Send Alerts ONLY Below Selected Level", fontWeight = FontWeight.Bold)
                             Text(
-                                "Silence all remote ntfy alerts when battery level is above threshold",
+                                "Silence all routine remote broadcasts while battery is healthy, saving server load & battery",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -92,7 +102,7 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Only Send When Battery Is Below:", style = MaterialTheme.typography.bodyMedium)
+                        Text("Only Broadcast Below:", style = MaterialTheme.typography.bodyMedium)
                         Text(
                             "${config.onlySendBelowLevelThreshold}%",
                             style = MaterialTheme.typography.titleMedium,
@@ -109,48 +119,6 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         steps = 44
                     )
                 }
-            }
-        }
-
-        // Rule 1: Power Events
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Power,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Column {
-                        Text("Charger Plugged / Unplugged", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Send ntfy notification when power cable is connected or disconnected",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Switch(
-                    checked = config.notifyOnPowerEvents,
-                    onCheckedChange = {
-                        viewModel.updateConfig(config.copy(notifyOnPowerEvents = it))
-                    }
-                )
             }
         }
 
@@ -183,7 +151,7 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         Column {
                             Text("Low Battery Warning Alert", fontWeight = FontWeight.Bold)
                             Text(
-                                "Send urgent alert when battery drops below threshold",
+                                "Broadcasts an urgent priority notification when this device drops to or below threshold",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -217,43 +185,14 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         onValueChange = {
                             viewModel.updateConfig(config.copy(lowBatteryThreshold = it.roundToInt()))
                         },
-                        valueRange = 1f..50f,
-                        steps = 48
+                        valueRange = 5f..30f,
+                        steps = 24
                     )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "Lock your screen NOW! Alert will wake screen in 3s...", Toast.LENGTH_LONG).show()
-                                viewModel.triggerTestDistinctAlertWithDelay(isLocal = true, delaySeconds = 3)
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Icon(Icons.Default.LockClock, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Test Lock Screen (in 3s)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        OutlinedButton(
-                            onClick = { viewModel.triggerTestDistinctAlert(isLocal = true) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Test Alert Now", fontSize = 11.sp)
-                        }
-                    }
                 }
             }
         }
 
-        // Rule 3: Full Battery Charged Alert Threshold
+        // Rule 3: Full Battery Alert
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -276,13 +215,13 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         Icon(
                             Icons.Default.BatteryChargingFull,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color(0xFF10B981),
                             modifier = Modifier.size(28.dp)
                         )
                         Column {
-                            Text("Full Battery Charged Alert", fontWeight = FontWeight.Bold)
+                            Text("Full Battery Alert", fontWeight = FontWeight.Bold)
                             Text(
-                                "Send alert when charging reaches target level",
+                                "Broadcasts notification when device charging reaches completion",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -303,12 +242,12 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Target Battery Charged Level:", style = MaterialTheme.typography.bodyMedium)
+                        Text("Full Battery Threshold:", style = MaterialTheme.typography.bodyMedium)
                         Text(
                             "${config.fullBatteryThreshold}%",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color(0xFF10B981)
                         )
                     }
                     Slider(
@@ -316,14 +255,14 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         onValueChange = {
                             viewModel.updateConfig(config.copy(fullBatteryThreshold = it.roundToInt()))
                         },
-                        valueRange = 70f..100f,
-                        steps = 29
+                        valueRange = 80f..100f,
+                        steps = 19
                     )
                 }
             }
         }
 
-        // Rule 4: Periodic Status Update Ping Interval
+        // Rule 4: Continuous Charging Progress
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -332,81 +271,6 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Column {
-                        Text("Periodic Status Ping Interval", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Send scheduled telemetry update to remote device",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                val options = listOf(
-                    0 to "Disabled (On-demand / Event only)",
-                    15 to "Every 15 Minutes",
-                    30 to "Every 30 Minutes",
-                    60 to "Every 1 Hour",
-                    120 to "Every 2 Hours",
-                    360 to "Every 6 Hours"
-                )
-
-                var expanded by remember { mutableStateOf(false) }
-                val currentOptionLabel = options.find { it.first == config.periodicIntervalMinutes }?.second ?: "Every 30 Minutes"
-
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = currentOptionLabel,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier
-                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                            .fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        options.forEach { (mins, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    viewModel.updateConfig(config.copy(periodicIntervalMinutes = mins))
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Rule 5: Auto Start on Boot & Background Optimizations
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -419,49 +283,203 @@ fun TriggersScreen(viewModel: BatteryViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Default.RestartAlt,
+                            Icons.Default.ElectricBolt,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color(0xFFF59E0B),
                             modifier = Modifier.size(28.dp)
                         )
                         Column {
-                            Text("Auto-Start Service on Boot", fontWeight = FontWeight.Bold)
+                            Text("Charging Progress Increments", fontWeight = FontWeight.Bold)
                             Text(
-                                "Automatically resume background monitoring when device powers on",
+                                "Broadcasts status periodically at step increments while plugged into charger",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                     Switch(
-                        checked = config.autoStartOnBoot,
+                        checked = config.notifyOnChargingProgress,
                         onCheckedChange = {
-                            viewModel.updateConfig(config.copy(autoStartOnBoot = it))
+                            viewModel.updateConfig(config.copy(notifyOnChargingProgress = it))
                         }
                     )
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                if (config.notifyOnChargingProgress) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Text("Broadcast Step Interval:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(5 to "Every 5%", 10 to "Every 10%", 15 to "Every 15%", 20 to "Every 20%").forEach { (stepVal, stepLabel) ->
+                            val isSelected = config.chargingProgressStepPercent == stepVal
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateConfig(config.copy(chargingProgressStepPercent = stepVal)) },
+                                label = { Text(stepLabel, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rule 5: Cable Plugged / Unplugged Events
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Power,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Column {
+                        Text("Charger Plugged / Unplugged", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Broadcasts notification immediately when cable is connected or disconnected",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Switch(
+                    checked = config.notifyOnPowerEvents,
+                    onCheckedChange = {
+                        viewModel.updateConfig(config.copy(notifyOnPowerEvents = it))
+                    }
+                )
+            }
+        }
+
+        // Rule 6: Periodic Status Heartbeat
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.AccessTime,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Column {
+                        Text("Periodic Status Heartbeat", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Broadcasts battery health on a fixed schedule (0 = disabled)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Battery Saver Optimization", fontWeight = FontWeight.Bold)
-                        Text(
-                            text = if (isIgnoringOpt) "Excluded (App will run continuously)" else "Not excluded (Android may sleep app)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isIgnoringOpt) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    listOf(
+                        0 to "Off",
+                        15 to "15m",
+                        30 to "30m",
+                        60 to "1h",
+                        120 to "2h"
+                    ).forEach { (minsVal, labelText) ->
+                        val isSelected = config.periodicIntervalMinutes == minsVal
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.updateConfig(config.copy(periodicIntervalMinutes = minsVal)) },
+                            label = { Text(labelText, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
+                }
+            }
+        }
 
-                    OutlinedButton(
-                        onClick = { viewModel.requestDisableBatteryOptimization(context) },
-                        shape = RoundedCornerShape(12.dp)
+        // Section 7: Test Outgoing Broadcast
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Test Outgoing Broadcast", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Publish a sample battery notification to '${config.topic}' to verify your outgoing trigger setup.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Button(
+                    onClick = { viewModel.sendTestNotification() },
+                    enabled = !isSendingTest,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isSendingTest) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Publishing...")
+                    } else {
+                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Publish Test Notification")
+                    }
+                }
+
+                testResult?.let { result ->
+                    val isOk = result.startsWith("Success") || result.contains("pushed")
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isOk) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (isIgnoringOpt) "Settings" else "Ignore Optimization")
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                if (isOk) Icons.Default.CheckCircle else Icons.Default.Error,
+                                contentDescription = null,
+                                tint = if (isOk) Color(0xFF047857) else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = result,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isOk) Color(0xFF047857) else MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }

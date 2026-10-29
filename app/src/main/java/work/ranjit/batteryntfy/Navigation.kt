@@ -15,13 +15,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import work.ranjit.batteryntfy.ui.BatteryViewModel
 import work.ranjit.batteryntfy.ui.screens.DashboardScreen
 import work.ranjit.batteryntfy.ui.screens.LogsScreen
-import work.ranjit.batteryntfy.ui.screens.NtfySettingsScreen
+import work.ranjit.batteryntfy.ui.screens.SettingsScreen
+import work.ranjit.batteryntfy.ui.screens.SubscriptionsScreen
 import work.ranjit.batteryntfy.ui.screens.TriggersScreen
 
 enum class AppTab(val title: String, val icon: ImageVector) {
-    Dashboard("Dashboard", Icons.Default.BatteryChargingFull),
-    Settings("ntfy Settings", Icons.Default.Cloud),
+    Dashboard("Home", Icons.Default.BatteryChargingFull),
+    Subscriptions("Devices", Icons.Default.Devices),
     Triggers("Triggers", Icons.Default.Tune),
+    Settings("Settings", Icons.Default.Settings),
     Logs("Logs", Icons.Default.History)
 }
 
@@ -85,9 +87,13 @@ fun MainNavigation() {
                 .padding(innerPadding)
         ) {
             when (selectedTab) {
-                AppTab.Dashboard -> DashboardScreen(viewModel = viewModel)
-                AppTab.Settings -> NtfySettingsScreen(viewModel = viewModel)
+                AppTab.Dashboard -> DashboardScreen(
+                    viewModel = viewModel,
+                    onNavigateToSubscriptions = { selectedTab = AppTab.Subscriptions }
+                )
+                AppTab.Subscriptions -> SubscriptionsScreen(viewModel = viewModel)
                 AppTab.Triggers -> TriggersScreen(viewModel = viewModel)
+                AppTab.Settings -> SettingsScreen(viewModel = viewModel)
                 AppTab.Logs -> LogsScreen(viewModel = viewModel)
             }
         }

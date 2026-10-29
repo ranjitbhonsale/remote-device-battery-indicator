@@ -11,8 +11,8 @@ android {
         applicationId = "work.ranjit.batteryntfy"
         minSdk = 24
         targetSdk = 36
-        versionCode = 34
-        versionName = "4.3"
+        versionCode = 35
+        versionName = "4.4"
     }
 
     signingConfigs {
