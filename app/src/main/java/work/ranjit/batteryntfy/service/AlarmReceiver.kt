@@ -31,10 +31,10 @@ class AlarmReceiver : BroadcastReceiver() {
             e.printStackTrace()
         }
 
-        DiagnosticLogger.log(context, "INFO", "ALARM_WATCHDOG", "Watchdog Wakeup", "3-min AlarmReceiver active. ServiceRunning: ${BatteryMonitorService.isServiceRunning.value}")
+        DiagnosticLogger.log(context, "INFO", "ALARM_WATCHDOG", "Watchdog Wakeup", "15-min AlarmReceiver active. ServiceRunning: ${BatteryMonitorService.isServiceRunning.value}")
 
-        // 1. Ensure Foreground Service is alive
-        if (!BatteryMonitorService.isServiceRunning.value) {
+        // 1. Ensure Foreground Service is alive if enabled
+        if (repo.isServiceEnabled() && !BatteryMonitorService.isServiceRunning.value) {
             BatteryMonitorService.start(context)
         }
 
@@ -42,6 +42,10 @@ class AlarmReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.Default).launch {
             try {
+                if (!repo.isServiceEnabled()) {
+                    return@launch
+                }
+
                 val config = repo.getConfig()
                 val publisher = NtfyPublisher()
 
@@ -73,22 +77,23 @@ class AlarmReceiver : BroadcastReceiver() {
                         technology = tech
                     )
 
-                    publisher.publishNotification(
-                        config = config,
-                        eventType = "Watchdog Keep-Alive ($percent%)",
-                        batteryInfo = info,
-                        priorityOverride = config.defaultPriority,
-                        tags = listOf("clock", "battery", "heartbeat")
-                    )
+                    val isFiltered = config.onlySendWhenBelowLevelEnabled && percent > config.onlySendBelowLevelThreshold
+                    if (!isFiltered && config.periodicIntervalMinutes > 0) {
+                        publisher.publishNotification(
+                            config = config,
+                            eventType = "Watchdog Keep-Alive ($percent%)",
+                            batteryInfo = info,
+                            priorityOverride = config.defaultPriority,
+                            tags = listOf("clock", "battery", "heartbeat")
+                        )
+                    }
                 }
 
-                // 3. Poll remote device topics and raise alerts if any device drops below its threshold while receiver phone is in Doze Mode
+                // 3. Poll remote device topics gently without triggering a remote refresh request
                 if (config.receiveNotificationsEnabled && config.subscribedTopics.isNotEmpty()) {
                     val subscriber = NtfySubscriber()
                     for (subTopic in config.subscribedTopics) {
                         try {
-                            publisher.publishRefreshRequest(config, subTopic)
-                            kotlinx.coroutines.delay(1500L)
                             val state = subscriber.fetchLatestDeviceState(config, subTopic)
                             if (state != null) {
                                 DiagnosticLogger.log(context, "INFO", "ALARM_WATCHDOG", "Polled Topic [$subTopic]", "Device: ${state.deviceName}, Battery: ${state.batteryPercent}%, Charging: ${state.isCharging}")
@@ -116,7 +121,7 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val WATCHDOG_INTERVAL_MS = 3 * 60 * 1000L // 3 Minutes
+        const val WATCHDOG_INTERVAL_MS = 15 * 60 * 1000L // 15 Minutes
 
         fun scheduleNextWatchdog(context: Context) {
             try {

@@ -26,6 +26,7 @@ data class NtfyConfig(
     val receiveNotificationsEnabled: Boolean = true,
     val notifyOnRemoteLowBattery: Boolean = true,
     val remoteLowBatteryThreshold: Int = 20,
+    val receiverPollIntervalMinutes: Int = 15, // 0 = SSE Real-Time Only, 5, 15, 30, 60 min
 
     // Google Apps Script / Remote Webhook Logging
     val appScriptUrl: String = ""

@@ -317,42 +317,47 @@ class BatteryMonitorService : Service() {
             }
         }
 
-        // 2. Periodic polling loop for both incoming refresh requests on own topic and subscribed topics
+        // 2. Periodic gentle fallback polling loop for subscribed topics (SSE does real-time streaming)
         receiverJob = serviceScope.launch {
             while (isActive) {
                 val currentConfig = prefsRepo.getConfig()
+                val pollMinutes = currentConfig.receiverPollIntervalMinutes
 
-                // Check for incoming refresh requests on local broadcast topic
-                if (currentConfig.topic.isNotBlank()) {
-                    try {
-                        val hasRefreshRequest = ntfySubscriber.checkTopicForRefreshRequest(currentConfig, currentConfig.topic, "1m")
-                        if (hasRefreshRequest) {
-                            handleIncomingRefreshRequest(currentConfig.topic)
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-
-                // Poll remote devices if receiver notifications enabled
-                if (currentConfig.receiveNotificationsEnabled && currentConfig.subscribedTopics.isNotEmpty()) {
-                    for (subTopic in currentConfig.subscribedTopics) {
-                        if (!isActive) break
+                // If fallback polling is enabled (> 0)
+                if (pollMinutes > 0) {
+                    // Check for incoming refresh requests on local broadcast topic (fallback for SSE)
+                    if (currentConfig.topic.isNotBlank()) {
                         try {
-                            // Auto-refresh: request remote device telemetry before evaluating alerts
-                            ntfyPublisher.publishRefreshRequest(currentConfig, subTopic)
-                            delay(1500L)
-                            val state = ntfySubscriber.fetchLatestDeviceState(currentConfig, subTopic)
-                            if (state != null) {
-                                handleRemoteDeviceStateReceived(state, currentConfig)
+                            val windowStr = "${pollMinutes.coerceAtLeast(1)}m"
+                            val hasRefreshRequest = ntfySubscriber.checkTopicForRefreshRequest(currentConfig, currentConfig.topic, windowStr)
+                            if (hasRefreshRequest) {
+                                handleIncomingRefreshRequest(currentConfig.topic)
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }
+
+                    // Poll remote devices gently if receiver notifications enabled
+                    if (currentConfig.receiveNotificationsEnabled && currentConfig.subscribedTopics.isNotEmpty()) {
+                        for (subTopic in currentConfig.subscribedTopics) {
+                            if (!isActive) break
+                            try {
+                                // Gentle fetch of cached device telemetry from ntfy topic WITHOUT forcing a remote refresh request!
+                                val state = ntfySubscriber.fetchLatestDeviceState(currentConfig, subTopic)
+                                if (state != null) {
+                                    handleRemoteDeviceStateReceived(state, currentConfig)
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
                 }
-                // Poll remote device topics and check commands every 25 seconds
-                delay(25_000L)
+
+                // Sleep according to configured interval (or 5 minutes if SSE-only mode)
+                val sleepMillis = if (pollMinutes > 0) (pollMinutes * 60_000L).coerceAtLeast(60_000L) else 300_000L
+                delay(sleepMillis)
             }
         }
     }

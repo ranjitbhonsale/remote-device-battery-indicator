@@ -21,6 +21,8 @@ class PreferencesRepository(context: Context) {
             putInt(KEY_LOW_BATTERY_THRESHOLD, config.lowBatteryThreshold)
             putBoolean(KEY_NOTIFY_FULL_BATTERY, config.notifyOnFullBattery)
             putInt(KEY_FULL_BATTERY_THRESHOLD, config.fullBatteryThreshold)
+            putBoolean(KEY_NOTIFY_CHARGING_PROGRESS, config.notifyOnChargingProgress)
+            putInt(KEY_CHARGING_PROGRESS_STEP, config.chargingProgressStepPercent)
             putInt(KEY_PERIODIC_INTERVAL, config.periodicIntervalMinutes)
             putBoolean(KEY_AUTO_START_BOOT, config.autoStartOnBoot)
             putBoolean(KEY_ONLY_BELOW_LEVEL_ENABLED, config.onlySendWhenBelowLevelEnabled)
@@ -32,6 +34,7 @@ class PreferencesRepository(context: Context) {
             putBoolean(KEY_RECEIVE_NOTIFICATIONS_ENABLED, config.receiveNotificationsEnabled)
             putBoolean(KEY_NOTIFY_ON_REMOTE_LOW, config.notifyOnRemoteLowBattery)
             putInt(KEY_REMOTE_LOW_THRESHOLD, config.remoteLowBatteryThreshold)
+            putInt(KEY_RECEIVER_POLL_INTERVAL, config.receiverPollIntervalMinutes)
             putString(KEY_APPSCRIPT_URL, config.appScriptUrl)
             apply()
         }
@@ -68,6 +71,8 @@ class PreferencesRepository(context: Context) {
             lowBatteryThreshold = prefs.getInt(KEY_LOW_BATTERY_THRESHOLD, defaultConfig.lowBatteryThreshold),
             notifyOnFullBattery = prefs.getBoolean(KEY_NOTIFY_FULL_BATTERY, defaultConfig.notifyOnFullBattery),
             fullBatteryThreshold = prefs.getInt(KEY_FULL_BATTERY_THRESHOLD, defaultConfig.fullBatteryThreshold),
+            notifyOnChargingProgress = prefs.getBoolean(KEY_NOTIFY_CHARGING_PROGRESS, defaultConfig.notifyOnChargingProgress),
+            chargingProgressStepPercent = prefs.getInt(KEY_CHARGING_PROGRESS_STEP, defaultConfig.chargingProgressStepPercent),
             periodicIntervalMinutes = prefs.getInt(KEY_PERIODIC_INTERVAL, defaultConfig.periodicIntervalMinutes),
             autoStartOnBoot = prefs.getBoolean(KEY_AUTO_START_BOOT, defaultConfig.autoStartOnBoot),
             onlySendWhenBelowLevelEnabled = prefs.getBoolean(KEY_ONLY_BELOW_LEVEL_ENABLED, defaultConfig.onlySendWhenBelowLevelEnabled),
@@ -77,6 +82,7 @@ class PreferencesRepository(context: Context) {
             receiveNotificationsEnabled = prefs.getBoolean(KEY_RECEIVE_NOTIFICATIONS_ENABLED, defaultConfig.receiveNotificationsEnabled),
             notifyOnRemoteLowBattery = prefs.getBoolean(KEY_NOTIFY_ON_REMOTE_LOW, defaultConfig.notifyOnRemoteLowBattery),
             remoteLowBatteryThreshold = prefs.getInt(KEY_REMOTE_LOW_THRESHOLD, defaultConfig.remoteLowBatteryThreshold),
+            receiverPollIntervalMinutes = prefs.getInt(KEY_RECEIVER_POLL_INTERVAL, defaultConfig.receiverPollIntervalMinutes),
             appScriptUrl = prefs.getString(KEY_APPSCRIPT_URL, defaultConfig.appScriptUrl) ?: defaultConfig.appScriptUrl
         )
     }
@@ -225,6 +231,8 @@ class PreferencesRepository(context: Context) {
         private const val KEY_LOW_BATTERY_THRESHOLD = "low_battery_threshold"
         private const val KEY_NOTIFY_FULL_BATTERY = "notify_full_battery"
         private const val KEY_FULL_BATTERY_THRESHOLD = "full_battery_threshold"
+        private const val KEY_NOTIFY_CHARGING_PROGRESS = "notify_charging_progress"
+        private const val KEY_CHARGING_PROGRESS_STEP = "charging_progress_step"
         private const val KEY_PERIODIC_INTERVAL = "periodic_interval"
         private const val KEY_AUTO_START_BOOT = "auto_start_boot"
         private const val KEY_ONLY_BELOW_LEVEL_ENABLED = "only_below_level_enabled"
@@ -235,6 +243,7 @@ class PreferencesRepository(context: Context) {
         private const val KEY_RECEIVE_NOTIFICATIONS_ENABLED = "receive_notifications_enabled"
         private const val KEY_NOTIFY_ON_REMOTE_LOW = "notify_on_remote_low"
         private const val KEY_REMOTE_LOW_THRESHOLD = "remote_low_threshold"
+        private const val KEY_RECEIVER_POLL_INTERVAL = "receiver_poll_interval"
         private const val KEY_SUBSCRIBED_DEVICES_JSON = "subscribed_devices_json"
 
         private const val KEY_LOGS_JSON = "logs_json"

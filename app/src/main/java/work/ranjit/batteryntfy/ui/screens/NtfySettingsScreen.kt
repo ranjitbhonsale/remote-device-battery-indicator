@@ -232,6 +232,64 @@ fun NtfySettingsScreen(viewModel: BatteryViewModel) {
                         }
                     )
                 }
+
+                // Receiver Polling Interval Selector
+                if (config.receiveNotificationsEnabled) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Background Fallback Polling",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = if (config.receiverPollIntervalMinutes == 0)
+                                        "Real-time SSE only (No background polling, saves server & battery)"
+                                    else
+                                        "Syncs cached device status every ${config.receiverPollIntervalMinutes} min as a fallback to real-time SSE stream",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf(
+                                0 to "SSE Only",
+                                5 to "5 min",
+                                15 to "15 min",
+                                30 to "30 min",
+                                60 to "60 min"
+                            ).forEach { (minsVal, labelText) ->
+                                val isSelected = config.receiverPollIntervalMinutes == minsVal
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        viewModel.updateConfig(config.copy(receiverPollIntervalMinutes = minsVal))
+                                    },
+                                    label = {
+                                        Text(
+                                            labelText,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
